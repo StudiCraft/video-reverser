@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 Offline Video Reverser</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0d6efd">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Video Reverser">
+    
+    <style>
+        /* --- Global Styles & Resets --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            line-height: 1.6;
+        }
+
+        /* --- Main Container --- */
+        .container {
+            background-color: #ffffff;
+            padding: 25px 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+            width: 100%;
+            max-width: 750px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        /* --- Headings and Text --- */
+        h1 {
+            color: #0d6efd;
+            margin-bottom: 15px;
+            font-size: 2.2em;
+        }
+
+        .container p:first-of-type {
+            color: #555;
+            margin-bottom: 25px;
+            font-size: 1.05em;
+        }
+
+        /* --- App Info Section --- */
+        .app-info {
+            background-color: #e7f3ff;
+            border: 1px solid #b8daff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 25px;
+            text-align: left;
+        }
+
+        .app-info h3 {
+            color: #0d6efd;
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .app-info ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .app-info li {
+            margin-bottom: 5px;
+            font-size: 0.95em;
+        }
+
+        /* --- Install PWA Banner --- */
+        .install-banner {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .install-banner button {
+            background-color: #198754;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-size: 0.9em;
+        }
+
+        .install-banner button:hover {
+            background-color: #157347;
+        }
+
+        /* --- File Upload Styling --- */
+        .upload-label {
+            display: inline-block;
+            padding: 12px 28px;
+            background-color: #198754;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 500;
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .upload-label:hover {
+            background-color: #157347;
+        }
+        .upload-label:active {
+            transform: translateY(1px);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* --- Video Players Section --- */
+        .video-players {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .video-wrapper {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            flex: 1;
+        }
+
+        .video-wrapper h2 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-size: 1.25em;
+            color: #495057;
+        }
+
+        video {
+            width: 100%;
+            max-height: 320px;
+            border-radius: 6px;
+            background-color: #000;
+            display: block;
+        }
+
+        /* --- Action Buttons --- */
+        .action-button {
+            display: inline-block;
+            padding: 12px 28px;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 500;
+            transition: background-color 0.2s ease-in-out, opacity 0.2s ease, transform 0.1s ease;
+            margin: 10px 5px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .action-button:active {
+            transform: translateY(1px);
+        }
+
+        #reverseButton {
+            background-color: #0d6efd;
+        }
+        #reverseButton:not(:disabled):hover {
+            background-color: #0b5ed7;
+        }
+
+        #downloadButton {
+            background-color: #fd7e14;
+            text-decoration: none;
+        }
+        #downloadButton:not([style*="display:none"]):hover {
+            background-color: #f06c04;
+        }
+
+        .action-button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.65;
+        }
+
+        /* --- Status and Progress --- */
+        #status {
+            margin-top: 25px;
+            font-size: 1em;
+            color: #212529;
+            min-height: 24px;
+            font-weight: 500;
+        }
+
+        #progressBar {
+            width: 100%;
+            height: 16px;
+            margin-top: 12px;
+            border-radius: 8px;
+            display: none;
+            appearance: none;
+            border: 1px solid #ced4da;
+        }
+        #progressBar::-webkit-progress-bar {
+            background-color: #e9ecef;
+            border-radius: 8px;
+        }
+        #progressBar::-webkit-progress-value {
+            background-color: #198754;
+            border-radius: 8px;
+            transition: width 0.2s ease-out;
+        }
+        #progressBar::-moz-progress-bar {
+            background-color: #198754;
+            border-radius: 8px;
+            transition: width 0.2s ease-out;
+        }
+
+        /* --- Performance Info --- */
+        .performance-info {
+            background-color: #fff3cd;
+            border: 1px solid #ffecb5;
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: #664d03;
+            display: none;
+        }
+
+        /* --- Responsive Design --- */
+        @media (min-width: 700px) {
+            .video-players {
+                flex-direction: row;
+                justify-content: space-between;
+            }
+        }
+
+        /* --- Accessibility --- */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Video Reverser</h1>
+        <p>Upload a video, reverse it, and download. This tool works entirely in your browser, even offline!</p>
+
+        <div id="installBanner" class="install-banner">
+            📱 Install this app on your device for faster access and offline use!
+            <button id="installButton">Install App</button>
+        </div>
+
+        <div class="app-info">
+            <h3>🚀 Performance Optimizations</h3>
+            <ul>
+                <li><strong>Smart Frame Extraction:</strong> Extracts 30 frames per second for optimal quality/speed balance</li>
+                <li><strong>720p Optimization:</strong> Automatically scales videos to 720p for faster processing</li>
+                <li><strong>Lossless Compression:</strong> Uses high-quality encoding to preserve video quality</li>
+                <li><strong>Progressive Web App:</strong> Install for offline use and faster loading</li>
+                <li><strong>Memory Efficient:</strong> Optimized algorithms to handle larger videos smoothly</li>
+            </ul>
+        </div>
+
+        <label for="videoUpload" class="upload-label">📤 Select Video</label>
+        <input type="file" id="videoUpload" accept="video/*" class="sr-only">
+
+        <div class="video-players">
+            <div class="video-wrapper">
+                <h2>Original Video</h2>
+                <video id="originalVideo" controls muted playsinline aria-label="Original video player"></video>
+            </div>
+            <div class="video-wrapper">
+                <h2>Reversed Video</h2>
+                <video id="reversedVideo" controls playsinline aria-label="Reversed video player"></video>
+            </div>
+        </div>
+
+        
+<label style="margin-top:15px; display:block;">FPS:
+    <input id="fpsInput" type="number" min="1" max="60" value="30"
+           style="width: 60px; padding: 4px; margin-left: 8px;" />
+</label>
+
+<button id="reverseButton" class="action-button" disabled>🔄 Reverse Video</button>
+        <a id="downloadButton" class="action-button" style="display:none;" download="reversed_video.webm" role="button">📥 Download Reversed Video</a>
+
+        <p id="status" aria-live="polite"></p>
+        <progress id="progressBar" value="0" max="100" aria-label="Video processing progress"></progress>
+        
+        <div id="performanceInfo" class="performance-info"></div>
+
+        <canvas id="frameCanvas" style="display:none;" aria-hidden="true"></canvas>
+    </div>
+
+    <script>
+        // --- Service Worker Registration ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(registration => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+
+        // --- PWA Install Functionality ---
+        let deferredPrompt;
+        const installBanner = document.getElementById('installBanner');
+        const installButton = document.getElementById('installButton');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBanner.style.display = 'block';
+        });
+
+        installButton.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response to the install prompt: ${outcome}`);
+                deferredPrompt = null;
+                installBanner.style.display = 'none';
+            }
+        });
+
+        window.addEventListener('appinstalled', () => {
+            installBanner.style.display = 'none';
+            console.log('PWA was installed');
+        });
+
+        // --- DOM Element Selection ---
+        const videoUpload = document.getElementById('videoUpload');
+        const originalVideo = document.getElementById('originalVideo');
+        const reversedVideo = document.getElementById('reversedVideo');
+        const reverseButton = document.getElementById('reverseButton');
+        const downloadButton = document.getElementById('downloadButton');
+        const statusDisplay = document.getElementById('status');
+        const progressBar = document.getElementById('progressBar');
+        const performanceInfo = document.getElementById('performanceInfo');
+        const frameCanvas = document.getElementById('frameCanvas');
+        const ctx = frameCanvas.getContext('2d');
+
+        // --- Enhanced State Variables ---
+        let sourceVideoFile = null;
+        let extractedFrames = [];
+        const MAX_RESOLUTION = 720; // 720p optimization
+        let currentOriginalVideoObjectURL = null; // New variable to store the object URL for the original video
+        let currentReversedVideoObjectURL = null; // Existing variable for reversed video
+        let processingStartTime = null;
+
+        // --- Utility Functions ---
+        function calculateOptimalDimensions(width, height, maxRes = MAX_RESOLUTION) {
+            if (width <= maxRes && height <= maxRes) {
+                return { width, height };
+            }
+            
+            const aspectRatio = width / height;
+            if (width > height) {
+                return {
+                    width: maxRes,
+                    height: Math.round(maxRes / aspectRatio)
+                };
+            } else {
+                return {
+                    width: Math.round(maxRes * aspectRatio),
+                    height: maxRes
+                };
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // --- Enhanced File Upload Handler (uses URL.createObjectURL for efficiency) ---
+        videoUpload.addEventListener('change', function(event) {
+            sourceVideoFile = event.target.files[0];
+            if (sourceVideoFile) {
+                processingStartTime = performance.now();
+                
+                // Revoke previous object URL for original video to prevent memory leaks
+                if (currentOriginalVideoObjectURL) {
+                    URL.revokeObjectURL(currentOriginalVideoObjectURL);
+                }
+
+                // Create a new object URL for the selected video file
+                currentOriginalVideoObjectURL = URL.createObjectURL(sourceVideoFile);
+                originalVideo.src = currentOriginalVideoObjectURL;
+
+                originalVideo.onloadedmetadata = () => {
+                    if (originalVideo.videoWidth === 0 || originalVideo.videoHeight === 0) {
+                        statusDisplay.textContent = 'Error: Video dimensions are zero. Is the file a valid video?';
+                        reverseButton.disabled = true;
+                        return;
+                    }
+
+                    // Calculate optimal dimensions for canvas
+                    const optimalDims = calculateOptimalDimensions(
+                        originalVideo.videoWidth, 
+                        originalVideo.videoHeight
+                    );
+                    
+                    frameCanvas.width = optimalDims.width;
+                    frameCanvas.height = optimalDims.height;
+                    
+                    reverseButton.disabled = false;
+                    statusDisplay.textContent = 'Video loaded. Ready to reverse.';
+                    
+                    // Show performance info
+                    const fileSize = formatFileSize(sourceVideoFile.size);
+                    const duration = formatTime(originalVideo.duration);
+                    const resolution = `${originalVideo.videoWidth}x${originalVideo.videoHeight}`;
+                    const optimizedRes = `${optimalDims.width}x${optimalDims.height}`;
+                    
+                    performanceInfo.innerHTML = `
+                        <strong>Video Info:</strong> ${fileSize} • ${duration} • ${resolution}
+                        ${resolution !== optimizedRes ? ` → Optimized to ${optimizedRes}` : ''}
+                    `;
+                    performanceInfo.style.display = 'block';
+                    
+                    downloadButton.style.display = 'none';
+                    // Clear previous reversed video if any
+                    if (reversedVideo.src && reversedVideo.src.startsWith('blob:')) {
+                        URL.revokeObjectURL(reversedVideo.src);
+                    }
+                    reversedVideo.src = '';
+                    progressBar.style.display = 'none';
+                    progressBar.value = 0;
+                };
+                originalVideo.onerror = () => {
+                    statusDisplay.textContent = 'Error loading video. The file might be corrupt or an unsupported format.';
+                    reverseButton.disabled = true;
+                    // Revoke the object URL if there's an error loading the video
+                    if (currentOriginalVideoObjectURL) {
+                        URL.revokeObjectURL(currentOriginalVideoObjectURL);
+                        currentOriginalVideoObjectURL = null;
+                    }
+                };
+                statusDisplay.textContent = 'Loading video...';
+            }
+        });
+
+        // --- Enhanced Reverse Button Handler ---
+        reverseButton.addEventListener('click', async function() {
+            if (!originalVideo.src || originalVideo.readyState < originalVideo.HAVE_METADATA) {
+                statusDisplay.textContent = 'Please load a video first or wait for it to load.';
+                return;
+            }
+            if (originalVideo.duration === Infinity || isNaN(originalVideo.duration) || originalVideo.duration <= 0) {
+                statusDisplay.textContent = 'Cannot process video: Invalid duration or live stream.';
+                return;
+            }
+
+            processingStartTime = performance.now();
+            reverseButton.disabled = true;
+            downloadButton.style.display = 'none';
+            statusDisplay.textContent = 'Step 1: Scaling and preparing canvas...';
+            progressBar.style.display = 'block';
+            progressBar.value = 0;
+            extractedFrames = [];
+
+            if (currentReversedVideoObjectURL) { 
+                URL.revokeObjectURL(currentReversedVideoObjectURL);
+                currentReversedVideoObjectURL = null;
+            }
+            if (reversedVideo.src && reversedVideo.src.startsWith('blob:')) {
+                URL.revokeObjectURL(reversedVideo.src);
+                reversedVideo.src = '';
+            }
+
+            try {
+                statusDisplay.textContent = 'Step 2: Extracting video frames...';
+                await extractFramesOptimized();
+                if (extractedFrames.length === 0) {
+                    statusDisplay.textContent = 'No frames were extracted. Cannot reverse video.';
+                    reverseButton.disabled = false;
+                    progressBar.style.display = 'none';
+                    return;
+                }
+                statusDisplay.textContent = `Extracted ${extractedFrames.length} frames. Creating reversed video with lossless compression...`;
+                statusDisplay.textContent = 'Step 4: Re-encoding reversed video...';
+                await createReversedVideoOptimized();
+            } catch (error) {
+                console.error("Error during video reversal:", error);
+                statusDisplay.textContent = `Error: ${error.message}. Check console for details.`;
+                progressBar.style.display = 'none';
+                reverseButton.disabled = false;
+            }
+        });
+
+        // --- Optimized Frame Extraction ---
+        async function extractFramesOptimized() {
+            const duration = originalVideo.duration;
+            const fps = parseInt(document.getElementById("fpsInput").value) || 30; // Default to 30 FPS
+            const interval = 1 / fps;
+            const totalFramesToExtract = Math.max(1, Math.floor(duration * fps));
+            extractedFrames = []; // Clear frames at the start
+
+            console.log(`Original video duration: ${duration} seconds`);
+            console.log(`Target FPS: ${fps}`);
+            console.log(`Expected total frames to extract: ${totalFramesToExtract}`);
+
+            statusDisplay.textContent = `Extracting frames at ${fps} FPS (0%)...`;
+            originalVideo.pause();
+
+            for (let i = 0; i < totalFramesToExtract; i++) {
+                const targetTime = i * interval;
+                originalVideo.currentTime = Math.min(targetTime, duration);
+
+                // Wait for the 'seeked' event to ensure the video is at the correct frame
+                await new Promise((resolve, reject) => {
+                    let seekTimeout;
+                    const seekHandler = () => {
+                        clearTimeout(seekTimeout);
+                        originalVideo.removeEventListener('seeked', seekHandler);
+                        resolve();
+                    };
+                    originalVideo.addEventListener('seeked', seekHandler);
+
+                    // Fallback for cases where seeked might not fire (e.g., already at time)
+                    // or if it's taking too long.
+                    seekTimeout = setTimeout(() => {
+                        originalVideo.removeEventListener('seeked', seekHandler);
+                        if (originalVideo.readyState >= originalVideo.HAVE_CURRENT_DATA) {
+                            // If video is ready and close to target time, assume it's good
+                            if (Math.abs(originalVideo.currentTime - targetTime) < (interval / 2)) { // within half a frame interval
+                                resolve();
+                            } else {
+                                // If not close to target time, it's an issue
+                                reject(new Error(`Seek timeout: Video not at target time ${targetTime.toFixed(2)}s.`));
+                            }
+                        } else {
+                            reject(new Error(`Seek timeout: Video not ready for seeking at ${targetTime.toFixed(2)}s.`));
+                        }
+                    }, 1000); // 1 second timeout for seeking
+                });
+
+                // Draw frame
+                ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(originalVideo, 0, 0, frameCanvas.width, frameCanvas.height);
+                
+                try {
+                    extractedFrames.push(frameCanvas.toDataURL('image/png'));
+                } catch (e) {
+                    console.error("Canvas toDataURL error:", e);
+                    throw new Error("Failed to get image data from canvas.");
+                }
+
+                const progressPercentage = Math.round(((i + 1) / totalFramesToExtract) * 50);
+                progressBar.value = progressPercentage;
+                statusDisplay.textContent = `Extracting frames at ${fps} FPS (${progressPercentage}%)...`;
+            }
+            console.log(`Successfully extracted ${extractedFrames.length} frames.`);
+        }
+
+        // --- Optimized Video Creation with Lossless Compression ---
+        async function createReversedVideoOptimized() {
+            const fps = parseInt(document.getElementById("fpsInput").value) || 30; // Default to 30 FPS
+            return new Promise(async (resolve, reject) => {
+                if (extractedFrames.length === 0) {
+                    reject(new Error('No frames available to create video.'));
+                    return;
+                }
+
+                statusDisplay.textContent = 'Step 3: Reversing frames...';
+                extractedFrames.reverse();
+                statusDisplay.textContent = 'Creating reversed video with lossless compression (50%)...';
+                progressBar.value = 50;
+
+                if (!('MediaRecorder' in window)) {
+                    reject(new Error('MediaRecorder API not supported in this browser. Cannot create downloadable video.'));
+                    return;
+                }
+
+                try {
+                    const stream = frameCanvas.captureStream(fps);
+                    if (!stream) {
+                        reject(new Error("Failed to capture stream from canvas."));
+                        return;
+                    }
+
+                    // Optimized MIME types for lossless compression
+                    const mimeTypes = [
+                        'video/webm; codecs=vp9,opus', // Best quality
+                        'video/webm; codecs=vp8,vorbis',
+                        'video/webm; codecs=vp9',
+                        'video/webm; codecs=vp8',
+                        'video/webm'
+                    ];
+                    
+                    let selectedMimeType = '';
+                    for (const mimeType of mimeTypes) {
+                        if (MediaRecorder.isTypeSupported(mimeType)) {
+                            selectedMimeType = mimeType;
+                            break;
+                        }
+                    }
+
+                    // Enhanced recording options for better quality
+                    const recordingOptions = selectedMimeType ? {
+                        mimeType: selectedMimeType,
+                        videoBitsPerSecond: 15000000 // Increased bitrate for better quality
+                    } : {
+                        videoBitsPerSecond: 15000000
+                    };
+
+                    let mediaRecorder;
+                    let mixedStream;
+
+                    // Handle audio reversal
+                    if (sourceVideoFile) {
+                        const audioContext = new AudioContext();
+                        const audioFileReader = new FileReader();
+
+                        audioFileReader.onload = async function() {
+                            try {
+                                const audioBuffer = await audioContext.decodeAudioData(audioFileReader.result);
+                                const reversedAudioBuffer = audioContext.createBuffer(
+                                    audioBuffer.numberOfChannels,
+                                    audioBuffer.length,
+                                    audioBuffer.sampleRate
+                                );
+
+                                for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+                                    const channelData = audioBuffer.getChannelData(i);
+                                    reversedAudioBuffer.getChannelData(i).set(Array.from(channelData).reverse());
+                                }
+
+                                const source = audioContext.createBufferSource();
+                                source.buffer = reversedAudioBuffer;
+                                const dest = audioContext.createMediaStreamDestination();
+                                source.connect(dest);
+                                source.start();
+
+                                mixedStream = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+                                mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
+                                startRecordingAndDrawing(mediaRecorder, resolve, reject, fps); // Start recording after audio is ready
+
+                            } catch (audioError) {
+                                console.error("Audio processing error:", audioError);
+                                // Fallback: proceed without audio if there's an audio error
+                                mixedStream = stream; // Use only video stream
+                                mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
+                                statusDisplay.textContent = `Warning: Audio processing failed (${audioError.message}). Reversing video only.`;
+                                startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
+                            }
+                        };
+                        audioFileReader.onerror = (e) => {
+                            console.error("Audio file reading error:", e);
+                            // Fallback: proceed without audio if file reading fails
+                            mixedStream = stream; // Use only video stream
+                            mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
+                            statusDisplay.textContent = `Warning: Could not read audio file (${e.message}). Reversing video only.`;
+                            startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
+                        };
+                        audioFileReader.readAsArrayBuffer(sourceVideoFile);
+                    } else {
+                        // If no sourceVideoFile, proceed without audio reversal
+                        mixedStream = stream; // Use only video stream
+                        mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
+                        startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
+                    }
+
+                } catch (e) {
+                    console.error("MediaRecorder setup or operation failed:", e);
+                    reject(new Error(`Re-encoding error: ${e.message}`));
+                }
+            });
+        }
+
+        // Helper function to encapsulate recording and frame drawing logic
+        function startRecordingAndDrawing(mediaRecorder, resolve, reject, fps) {
+            const chunks = [];
+            let frameIndex = 0;
+            const frameDisplayInterval = 1000 / fps; // Time in ms each frame should be displayed
+
+            mediaRecorder.ondataavailable = function(event) {
+                if (event.data.size > 0) {
+                    chunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = function() {
+                if (chunks.length === 0) {
+                    statusDisplay.textContent = 'Re-encoding failed: No data recorded.';
+                    progressBar.style.display = 'none';
+                    reverseButton.disabled = false;
+                    reject(new Error("MediaRecorder produced no data."));
+                    return;
+                }
+
+                const blobMimeType = chunks[0].type || mediaRecorder.mimeType || 'video/webm';
+                const blob = new Blob(chunks, { type: blobMimeType });
+
+                if (currentReversedVideoObjectURL) {
+                    URL.revokeObjectURL(currentReversedVideoObjectURL);
+                }
+                currentReversedVideoObjectURL = URL.createObjectURL(blob);
+
+                reversedVideo.src = currentReversedVideoObjectURL;
+                downloadButton.href = currentReversedVideoObjectURL;
+                const extension = blobMimeType.includes('mp4') ? 'mp4' : 'webm';
+                downloadButton.download = `reversed_video_${Date.now()}.${extension}`;
+                downloadButton.style.display = 'inline-block';
+
+                // Show performance results
+                const processingTime = ((performance.now() - processingStartTime) / 1000).toFixed(1);
+                const outputSize = formatFileSize(blob.size);
+                
+                statusDisplay.textContent = '✅ Video successfully reversed with optimized compression!';
+                performanceInfo.innerHTML = `
+                    <strong>Processing Complete:</strong> ${processingTime}s • Output: ${outputSize} • 
+                    ${extractedFrames.length} frames @ ${fps} FPS • ${frameCanvas.width}x${frameCanvas.height}
+                `;
+                
+                progressBar.value = 100;
+                setTimeout(() => { progressBar.style.display = 'none'; }, 3000);
+                reverseButton.disabled = false;
+                resolve();
+            };
+
+            mediaRecorder.onerror = (event) => {
+                console.error("MediaRecorder error:", event.error || event);
+                let errorMessage = "MediaRecorder error.";
+                if (event.error && event.error.name) {
+                    errorMessage += ` Name: ${event.error.name}.`;
+                }
+                if (event.error && event.error.message) {
+                    errorMessage += ` Message: ${event.error.message}.`;
+                }
+                reject(new Error(errorMessage));
+            };
+
+            mediaRecorder.start(); // Start recording
+
+            // Use setInterval to draw frames at a consistent rate
+            const drawingInterval = setInterval(() => {
+                if (frameIndex < extractedFrames.length) {
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+                        ctx.drawImage(img, 0, 0, frameCanvas.width, frameCanvas.height);
+                        
+                        const progressPercentage = 50 + Math.round((frameIndex / extractedFrames.length) * 50);
+                        progressBar.value = progressPercentage;
+                        statusDisplay.textContent = `Creating reversed video (${progressPercentage}%)...`;
+                        
+                        frameIndex++;
+                    };
+                    img.onerror = () => {
+                        console.error(`Error loading frame image ${frameIndex} for re-encoding.`);
+                        frameIndex++; // Still increment to try and continue, but log error
+                    };
+                    img.src = extractedFrames[frameIndex];
+                } else {
+                    clearInterval(drawingInterval); // Stop drawing
+                    if (mediaRecorder.state === "recording") {
+                        mediaRecorder.stop(); // Stop recording when all frames are drawn
+                    }
+                }
+            }, frameDisplayInterval); // Draw a frame every 'frameDisplayInterval' milliseconds
+        }
+
+        // --- Enhanced Cleanup ---
+        window.addEventListener('beforeunload', () => {
+            if (currentOriginalVideoObjectURL) {
+                URL.revokeObjectURL(currentOriginalVideoObjectURL);
+            }
+            if (currentReversedVideoObjectURL) {
+                URL.revokeObjectURL(currentReversedVideoObjectURL);
+            }
+        });
+    </script>
+</body>
+</html>
