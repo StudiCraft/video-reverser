@@ -3,23 +3,18 @@ const CACHE_NAME = 'video-reverser-cache-v1';
 
 // List the files to cache
 const urlsToCache = [
-  'index.html',
-  'manifest.json',
-  'service-worker.js',
-  // You should also include your icon files here, e.g.:
-  // './icons/icon-72x72.png',
-  // './icons/icon-96x96.png',
-  // etc.
-  // For now, I'm assuming the icons directory exists and contains the necessary files.
-  // Add all specific icon paths if they are not dynamically generated or if you want strict caching.
-  'icons/icon-72x72.png',
-  'icons/icon-96x96.png',
-  'icons/icon-128x128.png',
-  'icons/icon-144x144.png',
-  'icons/icon-152x152.png',
-  'icons/icon-192x192.png',
-  'icons/icon-384x384.png',
-  'icons/icon-512x512.png'
+  './index.html', // Changed to index.html
+  './manifest.json',
+  './service-worker.js',
+  // Ensure all icon paths are correct relative to the root
+  './icons/icon-72x72.png',
+  './icons/icon-96x96.png',
+  './icons/icon-128x128.png',
+  './icons/icon-144x144.png',
+  './icons/icon-152x152.png',
+  './icons/icon-192x192.png',
+  './icons/icon-384x384.png',
+  './icons/icon-512x512.png'
 ];
 
 // Install event: caches the static assets
