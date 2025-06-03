@@ -551,30 +551,19 @@
 
                 // Wait for the 'seeked' event to ensure the video is at the correct frame
                 await new Promise((resolve, reject) => {
-                    let seekTimeout;
                     const seekHandler = () => {
-                        clearTimeout(seekTimeout);
                         originalVideo.removeEventListener('seeked', seekHandler);
                         resolve();
                     };
                     originalVideo.addEventListener('seeked', seekHandler);
 
-                    // Fallback for cases where seeked might not fire (e.g., already at time)
-                    // or if it's taking too long.
-                    seekTimeout = setTimeout(() => {
-                        originalVideo.removeEventListener('seeked', seekHandler);
-                        if (originalVideo.readyState >= originalVideo.HAVE_CURRENT_DATA) {
-                            // If video is ready and close to target time, assume it's good
-                            if (Math.abs(originalVideo.currentTime - targetTime) < (interval / 2)) { // within half a frame interval
-                                resolve();
-                            } else {
-                                // If not close to target time, it's an issue
-                                reject(new Error(`Seek timeout: Video not at target time ${targetTime.toFixed(2)}s.`));
-                            }
-                        } else {
-                            reject(new Error(`Seek timeout: Video not ready for seeking at ${targetTime.toFixed(2)}s.`));
-                        }
-                    }, 1000); // 1 second timeout for seeking
+                    // If the video is already at or very close to the target time (e.g., due to previous seek),
+                    // the 'seeked' event might not fire. In this case, resolve immediately.
+                    if (originalVideo.readyState >= originalVideo.HAVE_CURRENT_DATA && 
+                        Math.abs(originalVideo.currentTime - targetTime) < (interval / 2)) {
+                        originalVideo.removeEventListener('seeked', seekHandler); // Clean up listener
+                        resolve();
+                    }
                 });
 
                 // Draw frame
