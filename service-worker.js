@@ -3,18 +3,18 @@ const CACHE_NAME = 'video-reverser-cache-v1';
 
 // List the files to cache
 const urlsToCache = [
-  './index.html', // Changed to index.html
-  './manifest.json',
-  './service-worker.js',
+  './video-reverser/index.html', // Changed to index.html
+  './video-reverser/manifest.json',
+  './video-reverser/service-worker.js',
   // Ensure all icon paths are correct relative to the root
-  './icons/icon-72x72.png',
-  './icons/icon-96x96.png',
-  './icons/icon-128x128.png',
-  './icons/icon-144x144.png',
-  './icons/icon-152x152.png',
-  './icons/icon-192x192.png',
-  './icons/icon-384x384.png',
-  './icons/icon-512x512.png'
+  './video-reverser/icons/icon-72x72.png',
+  './video-reverser/icons/icon-96x96.png',
+  './video-reverser/icons/icon-128x128.png',
+  './video-reverser/icons/icon-144x144.png',
+  './video-reverser/icons/icon-152x152.png',
+  './video-reverser/icons/icon-192x192.png',
+  './video-reverser/icons/icon-384x384.png',
+  './video-reverser/icons/icon-512x512.png'
 ];
 
 // Install event: caches the static assets
