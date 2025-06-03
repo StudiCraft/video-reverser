@@ -3,7 +3,7 @@ const CACHE_NAME = 'video-reverser-cache-v1';
 
 // List the files to cache
 const urlsToCache = [
-  './Video_Reverser_Final_With_Audio.html',
+  './index.html',
   './manifest.json',
   './service-worker.js',
   // You should also include your icon files here, e.g.:
