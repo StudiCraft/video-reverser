@@ -306,7 +306,7 @@
 
 
 <label style="margin-top:15px; display:block;">FPS:
-    <input id="fpsInput" type="number" min="1" max="60" value="30"
+    <input id="fpsInput" type="number" min="5" max="60" value="30"
            style="width: 60px; padding: 4px; margin-left: 8px;" />
 </label>
 <p id="fpsWarning" style="font-size: 0.8em; color: #d9534f; margin-top: 4px; min-height: 1em;"></p>
@@ -398,17 +398,37 @@
         const fpsInput = document.getElementById('fpsInput'); // Ensure it's defined if not already
         const fpsWarning = document.getElementById('fpsWarning');
 
-        if (fpsInput && fpsWarning) {
+        if (fpsInput && fpsWarning) { // fpsWarning is already defined globally or in an outer scope
             fpsInput.addEventListener('input', function() {
-                const fpsValue = parseInt(this.value, 10);
-                // Check if fpsValue is a number, greater than 0 and less than 5.
-                // The input field has min="1", so fpsValue should be >= 1 if valid.
-                if (!isNaN(fpsValue) && fpsValue > 0 && fpsValue < 5) {
-                    fpsWarning.textContent = 'Note: FPS values below 5 may cause playback issues (e.g., still image) in some external players or affect reversal quality. For best results, use 5 FPS or higher.';
+                let fpsValue = parseInt(this.value, 10); // Use let to allow re-assignment
+
+                if (!isNaN(fpsValue)) {
+                    if (fpsValue < 5) {
+                        this.value = 5; // Clamp input field value
+                        fpsValue = 5;   // Update fpsValue for current logic
+                    } else if (fpsValue > 60) {
+                        this.value = 60; // Clamp input field value
+                        fpsValue = 60;   // Update fpsValue for current logic
+                    }
                 } else {
-                    fpsWarning.textContent = ''; // Clear warning
+                    // Handle cases where input is not a valid number, e.g., empty string
+                    // Depending on desired behavior, could set to default, or rely on HTML validation popup
+                    // For now, if it's NaN, subsequent logic for warning/button will likely treat it as invalid.
+                    // Or, we could force a default if it becomes NaN after parsing.
+                    // Let's ensure that if it's NaN, the button gets disabled and warning is cleared.
+                    // The updateReverseButtonState() and warning logic should correctly handle NaN fpsValue.
                 }
-                updateReverseButtonState();
+
+                // Update warning (this logic might become mostly moot if clamping is effective)
+                // The warning was for "fpsValue > 0 && fpsValue < 5". Since it's clamped to 5,
+                // this specific warning text will not show. We can remove it or change it.
+                // For now, let's keep the structure but it won't trigger the "less than 5" text.
+                // A new, different warning could be added if desired, e.g., "Value clamped to 5-60 range".
+                // Let's remove the old warning text logic as it's now handled by clamping.
+                fpsWarning.textContent = ''; // Clear any previous general warning.
+                                             // Specific warning for "clamped" could be added here if needed.
+
+                updateReverseButtonState(); // Call this with the (potentially clamped) fpsValue
             });
         }
 
