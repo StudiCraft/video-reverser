@@ -401,11 +401,14 @@
         if (fpsInput && fpsWarning) {
             fpsInput.addEventListener('input', function() {
                 const fpsValue = parseInt(this.value, 10);
-                if (fpsValue === 1 || fpsValue === 2) {
-                    fpsWarning.textContent = 'Note: 1-2 FPS may cause playback issues (e.g., still image) in some external players. For better compatibility, consider a higher FPS or play in browser.';
+                // Check if fpsValue is a number, greater than 0 and less than 5.
+                // The input field has min="1", so fpsValue should be >= 1 if valid.
+                if (!isNaN(fpsValue) && fpsValue > 0 && fpsValue < 5) {
+                    fpsWarning.textContent = 'Note: FPS values below 5 may cause playback issues (e.g., still image) in some external players or affect reversal quality. For best results, use 5 FPS or higher.';
                 } else {
                     fpsWarning.textContent = ''; // Clear warning
                 }
+                updateReverseButtonState();
             });
         }
 
@@ -471,10 +474,23 @@
             return `${mins}:${secs.toString().padStart(2, '0')}`; // Format and return
         }
 
+        function updateReverseButtonState() {
+            if (!reverseButton || !fpsInput || !originalVideo) return; // Ensure elements are present
+
+            const fpsValue = parseInt(fpsInput.value, 10);
+            const isVideoReady = sourceVideoFile && originalVideo.readyState >= originalVideo.HAVE_METADATA && originalVideo.videoWidth > 0 && originalVideo.videoHeight > 0;
+
+            if (isVideoReady && !isNaN(fpsValue) && fpsValue >= 5) {
+                reverseButton.disabled = false;
+            } else {
+                reverseButton.disabled = true;
+            }
+        }
+
         // --- File Upload and Initial Video Setup ---
         // This event listener handles the selection of a video file by the user.
         videoUpload.addEventListener('change', function(event) {
-            sourceVideoFile = event.target.files[0]; // Get the selected file
+            sourceVideoFile = event.target.files[0];
             if (sourceVideoFile) {
                 processingStartTime = performance.now(); // Record start time for performance metrics
 
@@ -506,7 +522,8 @@
                     frameCanvas.width = optimalDims.width;
                     frameCanvas.height = optimalDims.height;
 
-                    reverseButton.disabled = false; // Enable the reverse button
+                    // reverseButton.disabled = false; // Enable the reverse button
+                    updateReverseButtonState();
                     statusDisplay.textContent = 'Video loaded. Ready to reverse.';
 
                     // Display video information (file size, duration, resolution)
@@ -539,14 +556,36 @@
                 // Error handling for video loading issues
                 originalVideo.onerror = () => {
                     statusDisplay.textContent = 'Error loading video. The file might be corrupt or an unsupported format.';
-                    reverseButton.disabled = true;
+                    // reverseButton.disabled = true; // Old line
                     // Revoke the object URL if there's an error to prevent memory leaks
                     if (currentOriginalVideoObjectURL) {
                         URL.revokeObjectURL(currentOriginalVideoObjectURL);
                         currentOriginalVideoObjectURL = null;
                     }
+                    updateReverseButtonState(); // Ensure button is disabled
                 };
                 statusDisplay.textContent = 'Loading video...'; // Initial status message
+            } else {
+                // No file selected or selection cleared
+                if (currentOriginalVideoObjectURL) {
+                    URL.revokeObjectURL(currentOriginalVideoObjectURL);
+                    currentOriginalVideoObjectURL = null;
+                }
+                originalVideo.src = '';
+                sourceVideoFile = null; // Explicitly set sourceVideoFile to null
+                statusDisplay.textContent = 'No video selected.';
+                performanceInfo.style.display = 'none';
+                downloadButton.style.display = 'none';
+                if (reversedVideo.src && reversedVideo.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(reversedVideo.src);
+                }
+                reversedVideo.src = '';
+                progressBar.style.display = 'none';
+                progressBar.value = 0;
+                const fpsWarning = document.getElementById('fpsWarning');
+                if (fpsWarning) fpsWarning.textContent = '';
+
+                updateReverseButtonState(); // Ensure button is disabled
             }
         });
 
