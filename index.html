@@ -309,7 +309,7 @@
     <input id="fpsInput" type="number" min="1" max="60" value="30"
            style="width: 60px; padding: 4px; margin-left: 8px;" />
 </label>
-
+<p id="fpsWarning" style="font-size: 0.8em; color: #d9534f; margin-top: 4px; min-height: 1em;"></p>
 <button id="reverseButton" class="action-button" disabled>🔄 Reverse Video</button>
         <a id="downloadButton" class="action-button" style="display:none;" download="reversed_video.webm" role="button">📥 Download Reversed Video</a>
 
@@ -394,6 +394,20 @@
         const performanceInfo = document.getElementById('performanceInfo'); // Element to display video performance metrics
         const frameCanvas = document.getElementById('frameCanvas'); // Canvas element used for frame extraction and manipulation
         const ctx = frameCanvas.getContext('2d'); // 2D rendering context for the canvas
+
+        const fpsInput = document.getElementById('fpsInput'); // Ensure it's defined if not already
+        const fpsWarning = document.getElementById('fpsWarning');
+
+        if (fpsInput && fpsWarning) {
+            fpsInput.addEventListener('input', function() {
+                const fpsValue = parseInt(this.value, 10);
+                if (fpsValue === 1 || fpsValue === 2) {
+                    fpsWarning.textContent = 'Note: 1-2 FPS may cause playback issues (e.g., still image) in some external players. For better compatibility, consider a higher FPS or play in browser.';
+                } else {
+                    fpsWarning.textContent = ''; // Clear warning
+                }
+            });
+        }
 
         // --- State Variables ---
         // These variables store the application's state during the video reversal process.
@@ -737,6 +751,23 @@
                     // universal guarantee against playback issues. The green screen issue, in particular,
                     // often points to problems in the video track decoding, possibly related to
                     // keyframes or codec profile compatibility.
+
+                    // NOTE ON LOW FPS AND KEYFRAME ISSUES WITH EXTERNAL PLAYERS:
+                    // The MediaRecorder API does not provide direct control over keyframe intervals
+                    // (GOP size) for video encoding. When using very low FPS values (e.g., 1-2 FPS),
+                    // the resulting H.264 stream (even if technically valid) may have very infrequent
+                    // keyframes.
+                    // Some external media players (like VLC) might struggle with such streams,
+                    // exhibiting behaviors like:
+                    //   - Displaying only a still image (typically the first frame).
+                    //   - Freezing until a new keyframe is encountered much later in the video.
+                    //   - Misinterpreting the low frame rate as a lack of data.
+                    // This can happen even if the browser's internal <video> player can play the
+                    // generated Blob/Object URL correctly (as the browser has more context on the
+                    // stream it just created).
+                    // The UI provides a warning for users selecting these low FPS values.
+                    // This is largely a limitation of current browser MediaRecorder implementations
+                    // for fine-grained encoding control at such edge-case frame rates.
                     const mimeTypes = [
                         // Prioritize avc3 (H.264 Annex B) as suggested by browser warnings
                         'video/mp4; codecs="avc3.42E01E, mp4a.40.2"', // H.264 Baseline Profile Level 3.0 + AAC-LC
