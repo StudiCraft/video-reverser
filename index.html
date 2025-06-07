@@ -738,20 +738,26 @@
                     // often points to problems in the video track decoding, possibly related to
                     // keyframes or codec profile compatibility.
                     const mimeTypes = [
-                        // Specific H.264 & AAC combinations first
+                        // Prioritize avc3 (H.264 Annex B) as suggested by browser warnings
+                        'video/mp4; codecs="avc3.42E01E, mp4a.40.2"', // H.264 Baseline Profile Level 3.0 + AAC-LC
+                        'video/mp4; codecs="avc3.4D401E, mp4a.40.2"', // H.264 Main Profile Level 3.0 + AAC-LC
+                        'video/mp4; codecs="avc3.64001E, mp4a.40.2"', // H.264 High Profile Level 3.0 + AAC-LC
+
+                        // Fallback to avc1 (H.264 AVCC)
                         'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', // H.264 Baseline + AAC-LC
                         'video/mp4; codecs="avc1.4D401E, mp4a.40.2"', // H.264 Main + AAC-LC
                         'video/mp4; codecs="avc1.64001E, mp4a.40.2"', // H.264 High + AAC-LC
-                        'video/mp4; codecs="h264, aac"',             // Generic H.264 + AAC
+                        'video/mp4; codecs="h264, aac"',             // Generic H.264 + AAC (often implies avc1)
 
-                        // H.264 video only (browser might add its own audio or fail if audio is expected)
+                        // H.264 video only (less likely to be chosen if audio is present in stream)
+                        'video/mp4; codecs="avc3.42E01E"',
                         'video/mp4; codecs="avc1.42E01E"',
                         'video/mp4; codecs="h264"',
 
-                        // Generic MP4 (let browser choose codecs - this is a key fallback)
+                        // Generic MP4 (let browser choose codecs)
                         'video/mp4',
 
-                        // WebM types as fallbacks
+                        // WebM types as ultimate fallbacks
                         'video/webm; codecs="vp9, opus"',
                         'video/webm; codecs="vp8, vorbis"',
                         'video/webm; codecs=vp9',
