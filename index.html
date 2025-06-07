@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🎬 Offline Video Reverser</title>
-    
+
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0d6efd">
     <link rel="apple-touch-icon" href="icons/icon-192x192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Video Reverser">
-    
+
     <style>
         /* --- Global Styles & Resets --- */
         body {
@@ -303,7 +303,7 @@
             </div>
         </div>
 
-        
+
 <label style="margin-top:15px; display:block;">FPS:
     <input id="fpsInput" type="number" min="1" max="60" value="30"
            style="width: 60px; padding: 4px; margin-left: 8px;" />
@@ -314,7 +314,7 @@
 
         <p id="status" aria-live="polite"></p>
         <progress id="progressBar" value="0" max="100" aria-label="Video processing progress"></progress>
-        
+
         <div id="performanceInfo" class="performance-info"></div>
 
         <canvas id="frameCanvas" style="display:none;" aria-hidden="true"></canvas>
@@ -322,168 +322,204 @@
 
     <script>
         // --- Service Worker Registration ---
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js')
+        // This section handles the registration of the service worker.
+        // Service workers enable Progressive Web App (PWA) features like offline caching and background updates.
+        if ('serviceWorker' in navigator) { // Check if the browser supports service workers
+            window.addEventListener('load', () => { // Register the service worker after the page has loaded
+                navigator.serviceWorker.register('service-worker.js') // Path to the service worker file
                     .then(registration => {
-                        console.log('SW registered: ', registration);
+                        console.log('Service Worker registered successfully: ', registration);
                     })
                     .catch(registrationError => {
-                        console.log('SW registration failed: ', registrationError);
+                        console.log('Service Worker registration failed: ', registrationError);
                     });
             });
         }
 
         // --- PWA Install Functionality ---
-        let deferredPrompt;
-        const installBanner = document.getElementById('installBanner');
-        const installButton = document.getElementById('installButton');
+        // This section manages the PWA installation prompt.
+        let deferredPrompt; // Stores the 'beforeinstallprompt' event
+        const installBanner = document.getElementById('installBanner'); // The banner inviting users to install the PWA
+        const installButton = document.getElementById('installButton'); // The button to trigger the install prompt
 
+        // Listen for the 'beforeinstallprompt' event, which is fired when the browser determines the app is installable.
         window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            installBanner.style.display = 'block';
+            e.preventDefault(); // Prevent the default browser install prompt
+            deferredPrompt = e; // Save the event so it can be triggered later
+            installBanner.style.display = 'block'; // Show the custom install banner
         });
 
+        // Handle clicks on the custom install button.
         installButton.addEventListener('click', async () => {
             if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
+                deferredPrompt.prompt(); // Show the browser's install prompt
+                const { outcome } = await deferredPrompt.userChoice; // Wait for the user's decision
                 console.log(`User response to the install prompt: ${outcome}`);
-                deferredPrompt = null;
-                installBanner.style.display = 'none';
+                deferredPrompt = null; // The prompt can only be used once
+                installBanner.style.display = 'none'; // Hide the custom banner
             }
         });
 
+        // Listen for the 'appinstalled' event, which is fired after the PWA has been installed.
         window.addEventListener('appinstalled', () => {
-            installBanner.style.display = 'none';
-            console.log('PWA was installed');
+            installBanner.style.display = 'none'; // Hide the banner if the app is installed
+            console.log('PWA was installed successfully.');
         });
 
         // --- DOM Element Selection ---
-        const videoUpload = document.getElementById('videoUpload');
-        const originalVideo = document.getElementById('originalVideo');
-        const reversedVideo = document.getElementById('reversedVideo');
-        const reverseButton = document.getElementById('reverseButton');
-        const downloadButton = document.getElementById('downloadButton');
-        const statusDisplay = document.getElementById('status');
-        const progressBar = document.getElementById('progressBar');
-        const performanceInfo = document.getElementById('performanceInfo');
-        const frameCanvas = document.getElementById('frameCanvas');
-        const ctx = frameCanvas.getContext('2d');
+        // Get references to various HTML elements to interact with them via JavaScript.
+        const videoUpload = document.getElementById('videoUpload'); // Input element for video file selection
+        const originalVideo = document.getElementById('originalVideo'); // Video player for the original video
+        const reversedVideo = document.getElementById('reversedVideo'); // Video player for the reversed video
+        const reverseButton = document.getElementById('reverseButton'); // Button to start the video reversal process
+        const downloadButton = document.getElementById('downloadButton'); // Button to download the reversed video
+        const statusDisplay = document.getElementById('status'); // Element to display status messages
+        const progressBar = document.getElementById('progressBar'); // Progress bar for video processing
+        const performanceInfo = document.getElementById('performanceInfo'); // Element to display video performance metrics
+        const frameCanvas = document.getElementById('frameCanvas'); // Canvas element used for frame extraction and manipulation
+        const ctx = frameCanvas.getContext('2d'); // 2D rendering context for the canvas
 
-        // --- Enhanced State Variables ---
-        let sourceVideoFile = null;
-        let extractedFrames = [];
-        const MAX_RESOLUTION = 720; // 720p optimization
-        let currentOriginalVideoObjectURL = null; // New variable to store the object URL for the original video
-        let currentReversedVideoObjectURL = null; // Existing variable for reversed video
-        let processingStartTime = null;
+        // --- State Variables ---
+        // These variables store the application's state during the video reversal process.
+        let sourceVideoFile = null; // Stores the selected video file object
+        let extractedFrames = []; // Array to store extracted video frames as data URLs
+        const MAX_RESOLUTION = 720; // Target resolution for video processing (720p optimization)
+        let currentOriginalVideoObjectURL = null; // Stores the object URL for the original video, used for display
+        let currentReversedVideoObjectURL = null; // Stores the object URL for the reversed video, used for display and download
+        let processingStartTime = null; // Timestamp for when video processing begins, used for performance measurement
 
         // --- Utility Functions ---
+
+        /**
+         * Calculates optimal dimensions for video processing, scaling down to a maximum resolution (MAX_RESOLUTION)
+         * while maintaining the aspect ratio. This helps in speeding up the processing.
+         * @param {number} width - Original width of the video.
+         * @param {number} height - Original height of the video.
+         * @param {number} maxRes - The maximum dimension (width or height) allowed.
+         * @returns {object} An object containing the calculated optimal width and height.
+         */
         function calculateOptimalDimensions(width, height, maxRes = MAX_RESOLUTION) {
-            if (width <= maxRes && height <= maxRes) {
+            if (width <= maxRes && height <= maxRes) { // If already within limits
                 return { width, height };
             }
-            
-            const aspectRatio = width / height;
-            if (width > height) {
-                return {
+
+            const aspectRatio = width / height; // Calculate aspect ratio
+            if (width > height) { // Landscape or square video
+                return { // Scale width down to maxRes, calculate height based on aspect ratio
                     width: maxRes,
                     height: Math.round(maxRes / aspectRatio)
                 };
-            } else {
-                return {
+            } else { // Portrait or square video
+                return { // Scale height down to maxRes, calculate width based on aspect ratio
                     width: Math.round(maxRes * aspectRatio),
                     height: maxRes
                 };
             }
         }
 
+        /**
+         * Formats file size in bytes to a human-readable string (KB, MB, GB).
+         * @param {number} bytes - The file size in bytes.
+         * @returns {string} A human-readable file size string.
+         */
         function formatFileSize(bytes) {
             if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            const k = 1024; // Base for conversion (1024 bytes = 1 KB)
+            const sizes = ['Bytes', 'KB', 'MB', 'GB']; // Units for file size
+            const i = Math.floor(Math.log(bytes) / Math.log(k)); // Determine the appropriate unit
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]; // Format and return
         }
 
+        /**
+         * Formats time in seconds to a "minutes:seconds" string.
+         * @param {number} seconds - The time duration in seconds.
+         * @returns {string} A formatted time string (e.g., "2:35").
+         */
         function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
+            const mins = Math.floor(seconds / 60); // Calculate minutes
+            const secs = Math.floor(seconds % 60); // Calculate remaining seconds
+            return `${mins}:${secs.toString().padStart(2, '0')}`; // Format and return
         }
 
-        // --- Enhanced File Upload Handler (uses URL.createObjectURL for efficiency) ---
+        // --- File Upload and Initial Video Setup ---
+        // This event listener handles the selection of a video file by the user.
         videoUpload.addEventListener('change', function(event) {
-            sourceVideoFile = event.target.files[0];
+            sourceVideoFile = event.target.files[0]; // Get the selected file
             if (sourceVideoFile) {
-                processingStartTime = performance.now();
-                
-                // Revoke previous object URL for original video to prevent memory leaks
+                processingStartTime = performance.now(); // Record start time for performance metrics
+
+                // Revoke any existing object URL for the original video to free up memory
                 if (currentOriginalVideoObjectURL) {
                     URL.revokeObjectURL(currentOriginalVideoObjectURL);
                 }
 
-                // Create a new object URL for the selected video file
+                // Create a new object URL for the selected file. This allows the video to be displayed in the <video> element.
                 currentOriginalVideoObjectURL = URL.createObjectURL(sourceVideoFile);
-                originalVideo.src = currentOriginalVideoObjectURL;
+                originalVideo.src = currentOriginalVideoObjectURL; // Set the source of the original video player
 
+                // Event listener for when the video metadata (like duration, dimensions) is loaded.
                 originalVideo.onloadedmetadata = () => {
+                    // Basic validation for video dimensions
                     if (originalVideo.videoWidth === 0 || originalVideo.videoHeight === 0) {
                         statusDisplay.textContent = 'Error: Video dimensions are zero. Is the file a valid video?';
                         reverseButton.disabled = true;
                         return;
                     }
 
-                    // Calculate optimal dimensions for canvas
+                    // Calculate the optimal dimensions for processing based on MAX_RESOLUTION
                     const optimalDims = calculateOptimalDimensions(
-                        originalVideo.videoWidth, 
+                        originalVideo.videoWidth,
                         originalVideo.videoHeight
                     );
-                    
+
+                    // Set the canvas dimensions to the optimal processing size
                     frameCanvas.width = optimalDims.width;
                     frameCanvas.height = optimalDims.height;
-                    
-                    reverseButton.disabled = false;
+
+                    reverseButton.disabled = false; // Enable the reverse button
                     statusDisplay.textContent = 'Video loaded. Ready to reverse.';
-                    
-                    // Show performance info
+
+                    // Display video information (file size, duration, resolution)
                     const fileSize = formatFileSize(sourceVideoFile.size);
                     const duration = formatTime(originalVideo.duration);
                     const resolution = `${originalVideo.videoWidth}x${originalVideo.videoHeight}`;
                     const optimizedRes = `${optimalDims.width}x${optimalDims.height}`;
-                    
+
                     performanceInfo.innerHTML = `
                         <strong>Video Info:</strong> ${fileSize} • ${duration} • ${resolution}
                         ${resolution !== optimizedRes ? ` → Optimized to ${optimizedRes}` : ''}
                     `;
-                    performanceInfo.style.display = 'block';
-                    
-                    downloadButton.style.display = 'none';
-                    // Clear previous reversed video if any
+                    performanceInfo.style.display = 'block'; // Show performance info
+
+                    // Reset UI elements for a new video
+                    downloadButton.style.display = 'none'; // Hide download button
+                    // Clear any previously reversed video and its object URL
                     if (reversedVideo.src && reversedVideo.src.startsWith('blob:')) {
                         URL.revokeObjectURL(reversedVideo.src);
                     }
-                    reversedVideo.src = '';
-                    progressBar.style.display = 'none';
-                    progressBar.value = 0;
+                    reversedVideo.src = ''; // Clear the reversed video player
+                    progressBar.style.display = 'none'; // Hide progress bar
+                    progressBar.value = 0; // Reset progress bar
                 };
+
+                // Error handling for video loading issues
                 originalVideo.onerror = () => {
                     statusDisplay.textContent = 'Error loading video. The file might be corrupt or an unsupported format.';
                     reverseButton.disabled = true;
-                    // Revoke the object URL if there's an error loading the video
+                    // Revoke the object URL if there's an error to prevent memory leaks
                     if (currentOriginalVideoObjectURL) {
                         URL.revokeObjectURL(currentOriginalVideoObjectURL);
                         currentOriginalVideoObjectURL = null;
                     }
                 };
-                statusDisplay.textContent = 'Loading video...';
+                statusDisplay.textContent = 'Loading video...'; // Initial status message
             }
         });
 
-        // --- Enhanced Reverse Button Handler ---
+        // --- Video Reversal Process ---
+        // Event listener for the "Reverse Video" button.
         reverseButton.addEventListener('click', async function() {
+            // Validations before starting the reversal process
             if (!originalVideo.src || originalVideo.readyState < originalVideo.HAVE_METADATA) {
                 statusDisplay.textContent = 'Please load a video first or wait for it to load.';
                 return;
@@ -493,15 +529,17 @@
                 return;
             }
 
-            processingStartTime = performance.now();
+            processingStartTime = performance.now(); // Record start time for performance measurement
+            // Disable buttons and reset UI during processing
             reverseButton.disabled = true;
             downloadButton.style.display = 'none';
             statusDisplay.textContent = 'Step 1: Scaling and preparing canvas...';
             progressBar.style.display = 'block';
             progressBar.value = 0;
-            extractedFrames = [];
+            extractedFrames = []; // Clear any previously extracted frames
 
-            if (currentReversedVideoObjectURL) { 
+            // Revoke any existing object URL for the reversed video
+            if (currentReversedVideoObjectURL) {
                 URL.revokeObjectURL(currentReversedVideoObjectURL);
                 currentReversedVideoObjectURL = null;
             }
@@ -510,75 +548,90 @@
                 reversedVideo.src = '';
             }
 
+            // Main try-catch block for the entire video reversal pipeline
             try {
+                // Step 2: Extract frames from the original video
                 statusDisplay.textContent = 'Step 2: Extracting video frames...';
-                await extractFramesOptimized();
-                if (extractedFrames.length === 0) {
+                await extractFramesOptimized(); // Call the frame extraction function
+                if (extractedFrames.length === 0) { // Check if any frames were extracted
                     statusDisplay.textContent = 'No frames were extracted. Cannot reverse video.';
-                    reverseButton.disabled = false;
+                    reverseButton.disabled = false; // Re-enable reverse button
                     progressBar.style.display = 'none';
                     return;
                 }
+                // Status update after frame extraction
                 statusDisplay.textContent = `Extracted ${extractedFrames.length} frames. Creating reversed video with lossless compression...`;
-                statusDisplay.textContent = 'Step 4: Re-encoding reversed video...';
-                await createReversedVideoOptimized();
-            } catch (error) {
+
+                // Step 3 & 4 (Combined in createReversedVideoOptimized): Reverse frames and re-encode video
+                statusDisplay.textContent = 'Step 4: Re-encoding reversed video...'; // (Step 3 is implicit frame reversal)
+                await createReversedVideoOptimized(); // Call the video creation function
+            } catch (error) { // Catch any errors during the process
                 console.error("Error during video reversal:", error);
                 statusDisplay.textContent = `Error: ${error.message}. Check console for details.`;
-                progressBar.style.display = 'none';
-                reverseButton.disabled = false;
+                progressBar.style.display = 'none'; // Hide progress bar on error
+                reverseButton.disabled = false; // Re-enable reverse button
             }
         });
 
-        // --- Optimized Frame Extraction ---
+        // --- Frame Extraction Logic ---
+        /**
+         * Extracts frames from the original video at a specified FPS.
+         * The frames are drawn onto a canvas and stored as data URLs in the `extractedFrames` array.
+         * This function updates the progress bar and status display.
+         */
         async function extractFramesOptimized() {
-            const duration = originalVideo.duration;
-            const fps = parseInt(document.getElementById("fpsInput").value) || 30; // Default to 30 FPS
-            const interval = 1 / fps;
-            const totalFramesToExtract = Math.max(1, Math.floor(duration * fps));
-            extractedFrames = []; // Clear frames at the start
+            const duration = originalVideo.duration; // Get video duration
+            const fps = parseInt(document.getElementById("fpsInput").value) || 30; // Get target FPS from input, default to 30
+            const interval = 1 / fps; // Time interval between frames
+            const totalFramesToExtract = Math.max(1, Math.floor(duration * fps)); // Calculate total frames needed
+            extractedFrames = []; // Initialize/clear the array for extracted frames
 
             console.log(`Original video duration: ${duration} seconds`);
             console.log(`Target FPS: ${fps}`);
             console.log(`Expected total frames to extract: ${totalFramesToExtract}`);
 
             statusDisplay.textContent = `Extracting frames at ${fps} FPS (0%)...`;
-            originalVideo.pause();
+            originalVideo.pause(); // Pause the video for frame-by-frame seeking
 
+            // Loop to extract each frame
             for (let i = 0; i < totalFramesToExtract; i++) {
-                const targetTime = i * interval;
-                originalVideo.currentTime = Math.min(targetTime, duration);
+                const targetTime = i * interval; // Calculate the timestamp for the current frame
+                originalVideo.currentTime = Math.min(targetTime, duration); // Seek the video to the target time
 
-                // Wait for the 'seeked' event to ensure the video is at the correct frame
+                // Wait for the 'seeked' event. This ensures the video player has updated to the correct frame
+                // before we try to draw it on the canvas.
                 await new Promise((resolve, reject) => {
                     const seekHandler = () => {
-                        originalVideo.removeEventListener('seeked', seekHandler);
+                        originalVideo.removeEventListener('seeked', seekHandler); // Remove listener once seek is complete
                         resolve();
                     };
                     originalVideo.addEventListener('seeked', seekHandler);
 
-                    // If the video is already at or very close to the target time (e.g., due to previous seek),
-                    // the 'seeked' event might not fire. In this case, resolve immediately.
-                    if (originalVideo.readyState >= originalVideo.HAVE_CURRENT_DATA && 
+                    // Fallback: If the video is already very close to the target time (e.g., for very short seeks or
+                    // if currentTime was already set), the 'seeked' event might not fire.
+                    // In such cases, resolve immediately if the video is ready.
+                    if (originalVideo.readyState >= originalVideo.HAVE_CURRENT_DATA &&
                         Math.abs(originalVideo.currentTime - targetTime) < (interval / 2)) {
                         originalVideo.removeEventListener('seeked', seekHandler); // Clean up listener
                         resolve();
                     }
                 });
 
-                // Draw frame
-                ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
-                ctx.imageSmoothingEnabled = true;
+                // Draw the current video frame onto the canvas
+                ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height); // Clear canvas
+                ctx.imageSmoothingEnabled = true; // Enable image smoothing for better quality
                 ctx.imageSmoothingQuality = 'high';
-                ctx.drawImage(originalVideo, 0, 0, frameCanvas.width, frameCanvas.height);
-                
+                ctx.drawImage(originalVideo, 0, 0, frameCanvas.width, frameCanvas.height); // Draw video frame
+
                 try {
+                    // Convert the canvas content to a PNG image data URL and store it
                     extractedFrames.push(frameCanvas.toDataURL('image/png'));
                 } catch (e) {
                     console.error("Canvas toDataURL error:", e);
-                    throw new Error("Failed to get image data from canvas.");
+                    throw new Error("Failed to get image data from canvas. This might happen with very large resolutions or if the canvas is tainted.");
                 }
 
+                // Update progress (frame extraction is considered the first 50% of the process)
                 const progressPercentage = Math.round(((i + 1) / totalFramesToExtract) * 50);
                 progressBar.value = progressPercentage;
                 statusDisplay.textContent = `Extracting frames at ${fps} FPS (${progressPercentage}%)...`;
@@ -586,175 +639,209 @@
             console.log(`Successfully extracted ${extractedFrames.length} frames.`);
         }
 
-        // --- Optimized Video Creation with Lossless Compression ---
+        // --- Reversed Video Creation Logic ---
+        /**
+         * Creates a reversed video from the extracted frames using the MediaRecorder API.
+         * This function also handles audio reversal if the original video has an audio track.
+         * Updates progress bar and status display.
+         */
         async function createReversedVideoOptimized() {
-            const fps = parseInt(document.getElementById("fpsInput").value) || 30; // Default to 30 FPS
-            return new Promise(async (resolve, reject) => {
+            const fps = parseInt(document.getElementById("fpsInput").value) || 30; // Get target FPS
+            return new Promise(async (resolve, reject) => { // Returns a promise that resolves when video creation is complete or rejects on error
                 if (extractedFrames.length === 0) {
                     reject(new Error('No frames available to create video.'));
                     return;
                 }
 
+                // Step 3: Reverse the order of extracted frames
                 statusDisplay.textContent = 'Step 3: Reversing frames...';
-                extractedFrames.reverse();
-                statusDisplay.textContent = 'Creating reversed video with lossless compression (50%)...';
-                progressBar.value = 50;
+                extractedFrames.reverse(); // Actual reversal of frame order
+                statusDisplay.textContent = 'Creating reversed video with lossless compression (50%)...'; // Status update
+                progressBar.value = 50; // Update progress bar (re-encoding is the second 50%)
 
+                // Check for MediaRecorder API support
                 if (!('MediaRecorder' in window)) {
                     reject(new Error('MediaRecorder API not supported in this browser. Cannot create downloadable video.'));
                     return;
                 }
 
                 try {
+                    // Create a MediaStream from the canvas. This stream will provide frames to the MediaRecorder.
                     const stream = frameCanvas.captureStream(fps);
                     if (!stream) {
                         reject(new Error("Failed to capture stream from canvas."));
                         return;
                     }
 
-                    // Optimized MIME types for lossless compression
+                    // Define preferred MIME types for video recording, prioritizing better codecs like VP9.
                     const mimeTypes = [
-                        'video/webm; codecs=vp9,opus', // Best quality
-                        'video/webm; codecs=vp8,vorbis',
-                        'video/webm; codecs=vp9',
-                        'video/webm; codecs=vp8',
-                        'video/webm'
+                        'video/webm; codecs=vp9,opus', // VP9 video with Opus audio (high quality)
+                        'video/webm; codecs=vp8,vorbis', // VP8 video with Vorbis audio
+                        'video/webm; codecs=vp9',       // VP9 video only
+                        'video/webm; codecs=vp8',        // VP8 video only
+                        'video/webm'                     // Default WebM
                     ];
-                    
-                    let selectedMimeType = '';
+
+                    let selectedMimeType = ''; // Store the supported MIME type
                     for (const mimeType of mimeTypes) {
                         if (MediaRecorder.isTypeSupported(mimeType)) {
                             selectedMimeType = mimeType;
-                            break;
+                            break; // Use the first supported high-quality MIME type
                         }
                     }
 
-                    // Enhanced recording options for better quality
+                    // Configure MediaRecorder options, including MIME type and video bitrate for quality.
                     const recordingOptions = selectedMimeType ? {
                         mimeType: selectedMimeType,
-                        videoBitsPerSecond: 15000000 // Increased bitrate for better quality
+                        videoBitsPerSecond: 15000000 // High bitrate for better quality (15 Mbps)
                     } : {
-                        videoBitsPerSecond: 15000000
+                        videoBitsPerSecond: 15000000 // Fallback if no specific MIME type is selected
                     };
 
-                    let mediaRecorder;
-                    let mixedStream;
+                    let mediaRecorder; // The MediaRecorder instance
+                    let mixedStream;   // The stream to record (can be video-only or video + reversed audio)
 
-                    // Handle audio reversal
+                    // --- Audio Reversal Handling ---
+                    // If a source video file exists, attempt to extract, reverse, and re-encode its audio.
                     if (sourceVideoFile) {
-                        const audioContext = new AudioContext();
-                        const audioFileReader = new FileReader();
+                        const audioContext = new AudioContext(); // Web Audio API for audio manipulation
+                        const audioFileReader = new FileReader(); // To read the audio data from the file
 
+                        // Callback for when the audio file is loaded into an ArrayBuffer
                         audioFileReader.onload = async function() {
                             try {
+                                // Decode the audio data from the ArrayBuffer
                                 const audioBuffer = await audioContext.decodeAudioData(audioFileReader.result);
+                                // Create a new AudioBuffer for the reversed audio
                                 const reversedAudioBuffer = audioContext.createBuffer(
                                     audioBuffer.numberOfChannels,
                                     audioBuffer.length,
                                     audioBuffer.sampleRate
                                 );
 
+                                // Reverse the audio data for each channel
                                 for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
                                     const channelData = audioBuffer.getChannelData(i);
+                                    // `Array.from().reverse()` is used because Float32Array.reverse() is in-place
                                     reversedAudioBuffer.getChannelData(i).set(Array.from(channelData).reverse());
                                 }
 
+                                // Create an AudioBufferSourceNode to play the reversed audio
                                 const source = audioContext.createBufferSource();
                                 source.buffer = reversedAudioBuffer;
+                                // Create a MediaStreamDestinationNode to capture the audio output as a stream
                                 const dest = audioContext.createMediaStreamDestination();
-                                source.connect(dest);
-                                source.start();
+                                source.connect(dest); // Connect the source to the destination
+                                source.start(); // Start playing the reversed audio (into the destination stream)
 
+                                // Combine the video stream (from canvas) and the reversed audio stream
                                 mixedStream = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-                                mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
-                                startRecordingAndDrawing(mediaRecorder, resolve, reject, fps); // Start recording after audio is ready
+                                mediaRecorder = new MediaRecorder(mixedStream, recordingOptions); // Initialize MediaRecorder with combined stream
+                                startRecordingAndDrawing(mediaRecorder, resolve, reject, fps); // Proceed to record video frames
 
-                            } catch (audioError) {
+                            } catch (audioError) { // Handle errors during audio processing
                                 console.error("Audio processing error:", audioError);
-                                // Fallback: proceed without audio if there's an audio error
-                                mixedStream = stream; // Use only video stream
+                                // Fallback: If audio processing fails, proceed with video-only reversal.
+                                mixedStream = stream; // Use only the video stream from the canvas
                                 mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
                                 statusDisplay.textContent = `Warning: Audio processing failed (${audioError.message}). Reversing video only.`;
                                 startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                             }
                         };
+                        // Error handler for FileReader
                         audioFileReader.onerror = (e) => {
                             console.error("Audio file reading error:", e);
-                            // Fallback: proceed without audio if file reading fails
-                            mixedStream = stream; // Use only video stream
+                            // Fallback: If reading the audio file fails, proceed with video-only reversal.
+                            mixedStream = stream;
                             mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
                             statusDisplay.textContent = `Warning: Could not read audio file (${e.message}). Reversing video only.`;
                             startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                         };
+                        // Start reading the source video file as an ArrayBuffer for audio processing
                         audioFileReader.readAsArrayBuffer(sourceVideoFile);
                     } else {
-                        // If no sourceVideoFile, proceed without audio reversal
-                        mixedStream = stream; // Use only video stream
+                        // If no sourceVideoFile (e.g., if it was cleared or not loaded), proceed with video-only reversal.
+                        mixedStream = stream;
                         mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
                         startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                     }
 
-                } catch (e) {
+                } catch (e) { // Catch errors during MediaRecorder setup or stream capture
                     console.error("MediaRecorder setup or operation failed:", e);
                     reject(new Error(`Re-encoding error: ${e.message}`));
                 }
             });
         }
 
-        // Helper function to encapsulate recording and frame drawing logic
+        // --- Helper for Recording and Drawing Frames ---
+        /**
+         * Manages the MediaRecorder lifecycle and draws frames onto the canvas at a fixed interval
+         * to be captured by the recorder.
+         * @param {MediaRecorder} mediaRecorder - The configured MediaRecorder instance.
+         * @param {Function} resolve - The resolve function of the parent Promise.
+         * @param {Function} reject - The reject function of the parent Promise.
+         * @param {number} fps - The frames per second for recording.
+         */
         function startRecordingAndDrawing(mediaRecorder, resolve, reject, fps) {
-            const chunks = [];
-            let frameIndex = 0;
-            const frameDisplayInterval = 1000 / fps; // Time in ms each frame should be displayed
+            const chunks = []; // Array to store recorded video data chunks
+            let frameIndex = 0; // Index for iterating through `extractedFrames` (which are now reversed)
+            const frameDisplayInterval = 1000 / fps; // Interval in milliseconds to display each frame
 
+            // Event handler for when data is available from MediaRecorder (i.e., a chunk of video is recorded)
             mediaRecorder.ondataavailable = function(event) {
                 if (event.data.size > 0) {
-                    chunks.push(event.data);
+                    chunks.push(event.data); // Store the data chunk
                 }
             };
 
+            // Event handler for when MediaRecorder stops recording
             mediaRecorder.onstop = function() {
-                if (chunks.length === 0) {
+                if (chunks.length === 0) { // Check if any data was recorded
                     statusDisplay.textContent = 'Re-encoding failed: No data recorded.';
                     progressBar.style.display = 'none';
                     reverseButton.disabled = false;
-                    reject(new Error("MediaRecorder produced no data."));
+                    reject(new Error("MediaRecorder produced no data. This can happen if codecs are unsupported or resources are too constrained."));
                     return;
                 }
 
-                const blobMimeType = chunks[0].type || mediaRecorder.mimeType || 'video/webm';
+                // Create a Blob from the recorded chunks. This Blob is the final reversed video file.
+                const blobMimeType = chunks[0].type || mediaRecorder.mimeType || 'video/webm'; // Determine MIME type of the blob
                 const blob = new Blob(chunks, { type: blobMimeType });
 
+                // Revoke any existing object URL for the reversed video before creating a new one
                 if (currentReversedVideoObjectURL) {
                     URL.revokeObjectURL(currentReversedVideoObjectURL);
                 }
-                currentReversedVideoObjectURL = URL.createObjectURL(blob);
+                currentReversedVideoObjectURL = URL.createObjectURL(blob); // Create object URL for the new blob
 
+                // Set the source of the reversed video player and the download link
                 reversedVideo.src = currentReversedVideoObjectURL;
                 downloadButton.href = currentReversedVideoObjectURL;
+                // Determine file extension based on MIME type
                 const extension = blobMimeType.includes('mp4') ? 'mp4' : 'webm';
-                downloadButton.download = `reversed_video_${Date.now()}.${extension}`;
-                downloadButton.style.display = 'inline-block';
+                downloadButton.download = `reversed_video_${Date.now()}.${extension}`; // Set download filename
+                downloadButton.style.display = 'inline-block'; // Show the download button
 
-                // Show performance results
+                // Display performance results
                 const processingTime = ((performance.now() - processingStartTime) / 1000).toFixed(1);
                 const outputSize = formatFileSize(blob.size);
-                
+
                 statusDisplay.textContent = '✅ Video successfully reversed with optimized compression!';
                 performanceInfo.innerHTML = `
-                    <strong>Processing Complete:</strong> ${processingTime}s • Output: ${outputSize} • 
+                    <strong>Processing Complete:</strong> ${processingTime}s • Output: ${outputSize} •
                     ${extractedFrames.length} frames @ ${fps} FPS • ${frameCanvas.width}x${frameCanvas.height}
                 `;
-                
-                progressBar.value = 100;
-                setTimeout(() => { progressBar.style.display = 'none'; }, 3000);
-                reverseButton.disabled = false;
-                resolve();
+
+                progressBar.value = 100; // Set progress to 100%
+                setTimeout(() => { progressBar.style.display = 'none'; }, 3000); // Hide progress bar after a delay
+                reverseButton.disabled = false; // Re-enable the reverse button
+                resolve(); // Resolve the main promise indicating success
             };
 
+            // Error handler for MediaRecorder
             mediaRecorder.onerror = (event) => {
                 console.error("MediaRecorder error:", event.error || event);
-                let errorMessage = "MediaRecorder error.";
+                let errorMessage = "MediaRecorder error during recording.";
                 if (event.error && event.error.name) {
                     errorMessage += ` Name: ${event.error.name}.`;
                 }
@@ -764,45 +851,51 @@
                 reject(new Error(errorMessage));
             };
 
-            mediaRecorder.start(); // Start recording
+            mediaRecorder.start(); // Start recording the stream
 
-            // Use setInterval to draw frames at a consistent rate
+            // Use setInterval to draw frames onto the canvas at the specified FPS.
+            // The MediaRecorder captures these frames from the canvas stream.
             const drawingInterval = setInterval(() => {
-                if (frameIndex < extractedFrames.length) {
-                    const img = new Image();
-                    img.onload = () => {
+                if (frameIndex < extractedFrames.length) { // If there are more frames to draw
+                    const img = new Image(); // Create an Image element to load the data URL
+                    img.onload = () => { // When the frame image is loaded
+                        // Draw the frame onto the canvas
                         ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
                         ctx.imageSmoothingEnabled = true;
                         ctx.imageSmoothingQuality = 'high';
                         ctx.drawImage(img, 0, 0, frameCanvas.width, frameCanvas.height);
-                        
+
+                        // Update progress (re-encoding part, from 50% to 100%)
                         const progressPercentage = 50 + Math.round((frameIndex / extractedFrames.length) * 50);
                         progressBar.value = progressPercentage;
                         statusDisplay.textContent = `Creating reversed video (${progressPercentage}%)...`;
-                        
-                        frameIndex++;
+
+                        frameIndex++; // Move to the next frame
                     };
+                    // Error handler if a frame image fails to load
                     img.onerror = () => {
-                        console.error(`Error loading frame image ${frameIndex} for re-encoding.`);
-                        frameIndex++; // Still increment to try and continue, but log error
+                        console.error(`Error loading frame image ${frameIndex} (data URL) for re-encoding.`);
+                        frameIndex++; // Skip the problematic frame and try to continue
                     };
-                    img.src = extractedFrames[frameIndex];
-                } else {
-                    clearInterval(drawingInterval); // Stop drawing
-                    if (mediaRecorder.state === "recording") {
-                        mediaRecorder.stop(); // Stop recording when all frames are drawn
+                    img.src = extractedFrames[frameIndex]; // Set the source of the image to the frame's data URL
+                } else { // All frames have been drawn
+                    clearInterval(drawingInterval); // Stop the drawing interval
+                    if (mediaRecorder.state === "recording") { // Check if MediaRecorder is still recording
+                        mediaRecorder.stop(); // Stop recording
                     }
                 }
-            }, frameDisplayInterval); // Draw a frame every 'frameDisplayInterval' milliseconds
+            }, frameDisplayInterval); // Set interval timing based on FPS
         }
 
-        // --- Enhanced Cleanup ---
+        // --- Memory Management and Cleanup ---
+        // Event listener for 'beforeunload' (when the user is about to leave the page).
+        // This is important for revoking object URLs to free up browser memory.
         window.addEventListener('beforeunload', () => {
-            if (currentOriginalVideoObjectURL) {
-                URL.revokeObjectURL(currentOriginalVideoObjectURL);
+            if (currentOriginalVideoObjectURL) { // If an object URL for the original video exists
+                URL.revokeObjectURL(currentOriginalVideoObjectURL); // Revoke it
             }
-            if (currentReversedVideoObjectURL) {
-                URL.revokeObjectURL(currentReversedVideoObjectURL);
+            if (currentReversedVideoObjectURL) { // If an object URL for the reversed video exists
+                URL.revokeObjectURL(currentReversedVideoObjectURL); // Revoke it
             }
         });
     </script>
