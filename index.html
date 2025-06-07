@@ -705,13 +705,39 @@
                         return;
                     }
 
-                    // Define preferred MIME types for video recording, prioritizing better codecs like VP9.
+                    // NOTE ON CODEC/COMPATIBILITY ISSUES (MP4/H.264):
+                    // While MP4 (often with H.264 video and AAC audio) is widely supported,
+                    // issues like green screens, player crashes (e.g., in VLC), or other artifacts
+                    // can still occur. These are often due to factors largely outside of direct
+                    // control via the MediaRecorder API:
+                    //
+                    // 1. Keyframe Interval: MediaRecorder uses browser-default keyframe intervals.
+                    //    If these are too infrequent or not aligned with player expectations for
+                    //    the specific content (reversed canvas frames), decoding errors can occur.
+                    // 2. Codec Implementation: The browser's specific H.264/AAC encoder implementation
+                    //    might produce streams that, while technically valid, could be problematic for
+                    //    some decoders/players.
+                    // 3. Player Sensitivity: Some players (like VLC) are more sensitive to minor
+                    //    stream inconsistencies or missing optional metadata than others.
+                    // 4. MP4 Container Structure: The way MediaRecorder packages the stream into the
+                    //    MP4 container might not always include all optional information that some
+                    //    players rely on for robust playback.
+                    // 5. System/Driver Issues: Hardware acceleration on either the encoding (browser)
+                    //    or decoding (player) side can sometimes lead to codec-specific problems.
+                    //
+                    // Switching to MP4 may improve compatibility for some use cases but is not a
+                    // universal guarantee against playback issues. The green screen issue, in particular,
+                    // often points to problems in the video track decoding, possibly related to
+                    // keyframes or codec profile compatibility.
                     const mimeTypes = [
-                        'video/webm; codecs=vp9,opus', // VP9 video with Opus audio (high quality)
-                        'video/webm; codecs=vp8,vorbis', // VP8 video with Vorbis audio
-                        'video/webm; codecs=vp9',       // VP9 video only
-                        'video/webm; codecs=vp8',        // VP8 video only
-                        'video/webm'                     // Default WebM
+                        'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', // H.264 Baseline Profile video + AAC LC audio
+                        'video/mp4; codecs="h264, aac"', // More generic H.264 + AAC
+                        'video/mp4', // Generic MP4, browser will choose codecs
+                        'video/webm; codecs=vp9,opus',
+                        'video/webm; codecs=vp8,vorbis',
+                        'video/webm; codecs=vp9',
+                        'video/webm; codecs=vp8',
+                        'video/webm'
                     ];
 
                     let selectedMimeType = ''; // Store the supported MIME type
@@ -856,7 +882,13 @@
                 reversedVideo.src = currentReversedVideoObjectURL;
                 downloadButton.href = currentReversedVideoObjectURL;
                 // Determine file extension based on MIME type
-                const extension = blobMimeType.includes('mp4') ? 'mp4' : 'webm';
+                // const extension = blobMimeType.includes('mp4') ? 'mp4' : 'webm'; // Old line
+                let extension = 'webm'; // Default to webm
+                if (blobMimeType.includes('mp4')) {
+                    extension = 'mp4';
+                } else if (blobMimeType.includes('webm')) {
+                    extension = 'webm';
+                } // Add more else-if for other types if necessary, though mp4 and webm are primary.
                 downloadButton.download = `reversed_video_${Date.now()}.${extension}`; // Set download filename
                 downloadButton.style.display = 'inline-block'; // Show the download button
 
