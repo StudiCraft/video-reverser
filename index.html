@@ -315,7 +315,7 @@
 
         <p id="status" aria-live="polite"></p>
         <progress id="progressBar" value="0" max="100" aria-label="Video processing progress"></progress>
-
+        <p id="recordingFormatDisplay" style="font-size: 0.85em; color: #555; margin-top: 5px; min-height: 1em;"></p>
         <div id="performanceInfo" class="performance-info"></div>
 
         <canvas id="frameCanvas" style="display:none;" aria-hidden="true"></canvas>
@@ -516,6 +516,10 @@
                     reversedVideo.src = ''; // Clear the reversed video player
                     progressBar.style.display = 'none'; // Hide progress bar
                     progressBar.value = 0; // Reset progress bar
+                    const formatDisplay = document.getElementById('recordingFormatDisplay');
+                    if (formatDisplay) {
+                        formatDisplay.textContent = ''; // Clear it
+                    }
                 };
 
                 // Error handling for video loading issues
@@ -549,6 +553,10 @@
             // Disable buttons and reset UI during processing
             reverseButton.disabled = true;
             downloadButton.style.display = 'none';
+            const formatDisplayClear = document.getElementById('recordingFormatDisplay');
+            if (formatDisplayClear) {
+                formatDisplayClear.textContent = ''; // Clear it
+            }
             statusDisplay.textContent = 'Step 1: Scaling and preparing canvas...';
             progressBar.style.display = 'block';
             progressBar.value = 0;
@@ -730,23 +738,38 @@
                     // often points to problems in the video track decoding, possibly related to
                     // keyframes or codec profile compatibility.
                     const mimeTypes = [
-                        'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', // H.264 Baseline Profile video + AAC LC audio
-                        'video/mp4; codecs="h264, aac"', // More generic H.264 + AAC
-                        'video/mp4', // Generic MP4, browser will choose codecs
-                        'video/webm; codecs=vp9,opus',
-                        'video/webm; codecs=vp8,vorbis',
+                        // Specific H.264 & AAC combinations first
+                        'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', // H.264 Baseline + AAC-LC
+                        'video/mp4; codecs="avc1.4D401E, mp4a.40.2"', // H.264 Main + AAC-LC
+                        'video/mp4; codecs="avc1.64001E, mp4a.40.2"', // H.264 High + AAC-LC
+                        'video/mp4; codecs="h264, aac"',             // Generic H.264 + AAC
+
+                        // H.264 video only (browser might add its own audio or fail if audio is expected)
+                        'video/mp4; codecs="avc1.42E01E"',
+                        'video/mp4; codecs="h264"',
+
+                        // Generic MP4 (let browser choose codecs - this is a key fallback)
+                        'video/mp4',
+
+                        // WebM types as fallbacks
+                        'video/webm; codecs="vp9, opus"',
+                        'video/webm; codecs="vp8, vorbis"',
                         'video/webm; codecs=vp9',
                         'video/webm; codecs=vp8',
                         'video/webm'
                     ];
 
-                    let selectedMimeType = ''; // Store the supported MIME type
+                    let selectedMimeType = '';
                     for (const mimeType of mimeTypes) {
                         if (MediaRecorder.isTypeSupported(mimeType)) {
+                            console.log(`Supported MIME type found: ${mimeType}`); // Add log for supported type
                             selectedMimeType = mimeType;
-                            break; // Use the first supported high-quality MIME type
+                            break;
+                        } else {
+                            console.log(`MIME type not supported: ${mimeType}`); // Add log for unsupported type
                         }
                     }
+                    console.log('Selected MIME type for MediaRecorder options:', selectedMimeType || 'default (browser will choose)');
 
                     // Configure MediaRecorder options, including MIME type and video bitrate for quality.
                     const recordingOptions = selectedMimeType ? {
@@ -801,6 +824,23 @@
                                 // Combine the video stream (from canvas) and the reversed audio stream
                                 mixedStream = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
                                 mediaRecorder = new MediaRecorder(mixedStream, recordingOptions); // Initialize MediaRecorder with combined stream
+
+                                const formatDisplayAudioTry = document.getElementById('recordingFormatDisplay');
+                                if (formatDisplayAudioTry) {
+                                    let friendlyFormat = "Unknown";
+                                    if (mediaRecorder.mimeType) {
+                                        if (mediaRecorder.mimeType.includes('mp4')) {
+                                            friendlyFormat = "MP4";
+                                        } else if (mediaRecorder.mimeType.includes('webm')) {
+                                            friendlyFormat = "WebM";
+                                        } else {
+                                            friendlyFormat = mediaRecorder.mimeType;
+                                        }
+                                    }
+                                    formatDisplayAudioTry.textContent = `Recording format: ${friendlyFormat}`;
+                                } else {
+                                    console.log('Recording format (from mediaRecorder.mimeType):', mediaRecorder.mimeType);
+                                }
                                 startRecordingAndDrawing(mediaRecorder, resolve, reject, fps); // Proceed to record video frames
 
                             } catch (audioError) { // Handle errors during audio processing
@@ -809,6 +849,23 @@
                                 mixedStream = stream; // Use only the video stream from the canvas
                                 mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
                                 statusDisplay.textContent = `Warning: Audio processing failed (${audioError.message}). Reversing video only.`;
+
+                                const formatDisplayAudioCatch = document.getElementById('recordingFormatDisplay');
+                                if (formatDisplayAudioCatch) {
+                                    let friendlyFormat = "Unknown";
+                                    if (mediaRecorder.mimeType) {
+                                        if (mediaRecorder.mimeType.includes('mp4')) {
+                                            friendlyFormat = "MP4";
+                                        } else if (mediaRecorder.mimeType.includes('webm')) {
+                                            friendlyFormat = "WebM";
+                                        } else {
+                                            friendlyFormat = mediaRecorder.mimeType;
+                                        }
+                                    }
+                                    formatDisplayAudioCatch.textContent = `Recording format: ${friendlyFormat}`;
+                                } else {
+                                    console.log('Recording format (from mediaRecorder.mimeType):', mediaRecorder.mimeType);
+                                }
                                 startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                             }
                         };
@@ -819,6 +876,23 @@
                             mixedStream = stream;
                             mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
                             statusDisplay.textContent = `Warning: Could not read audio file (${e.message}). Reversing video only.`;
+
+                            const formatDisplayAudioError = document.getElementById('recordingFormatDisplay');
+                            if (formatDisplayAudioError) {
+                                let friendlyFormat = "Unknown";
+                                if (mediaRecorder.mimeType) {
+                                    if (mediaRecorder.mimeType.includes('mp4')) {
+                                        friendlyFormat = "MP4";
+                                    } else if (mediaRecorder.mimeType.includes('webm')) {
+                                        friendlyFormat = "WebM";
+                                    } else {
+                                        friendlyFormat = mediaRecorder.mimeType;
+                                    }
+                                }
+                                formatDisplayAudioError.textContent = `Recording format: ${friendlyFormat}`;
+                            } else {
+                                console.log('Recording format (from mediaRecorder.mimeType):', mediaRecorder.mimeType);
+                            }
                             startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                         };
                         // Start reading the source video file as an ArrayBuffer for audio processing
@@ -827,8 +901,26 @@
                         // If no sourceVideoFile (e.g., if it was cleared or not loaded), proceed with video-only reversal.
                         mixedStream = stream;
                         mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
-                        startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                     }
+
+                    const formatDisplay = document.getElementById('recordingFormatDisplay');
+                    if (formatDisplay) {
+                        let friendlyFormat = "Unknown";
+                        if (mediaRecorder.mimeType) {
+                            if (mediaRecorder.mimeType.includes('mp4')) {
+                                friendlyFormat = "MP4";
+                            } else if (mediaRecorder.mimeType.includes('webm')) {
+                                friendlyFormat = "WebM";
+                            } else {
+                                friendlyFormat = mediaRecorder.mimeType; // Show full type if not common
+                            }
+                        }
+                        formatDisplay.textContent = `Recording format: ${friendlyFormat}`;
+                    } else {
+                        // Fallback if element not found, though it should be
+                        console.log('Recording format (from mediaRecorder.mimeType):', mediaRecorder.mimeType);
+                    }
+                    startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
 
                 } catch (e) { // Catch errors during MediaRecorder setup or stream capture
                     console.error("MediaRecorder setup or operation failed:", e);
@@ -847,6 +939,7 @@
          * @param {number} fps - The frames per second for recording.
          */
         function startRecordingAndDrawing(mediaRecorder, resolve, reject, fps) {
+            console.log('MediaRecorder instance actually using MIME type:', mediaRecorder.mimeType); // Add this line
             const chunks = []; // Array to store recorded video data chunks
             let frameIndex = 0; // Index for iterating through `extractedFrames` (which are now reversed)
             const frameDisplayInterval = 1000 / fps; // Interval in milliseconds to display each frame
