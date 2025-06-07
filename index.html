@@ -322,6 +322,114 @@
     </div>
 
     <script>
+        console.log("Video Reverser main script started");
+
+        // --- IndexedDB Setup ---
+        const DB_NAME = 'videoReverserDB_v1';
+        const STORE_NAME = 'framesStore';
+        let db; // Will hold the database instance
+
+        /**
+         * Initializes the IndexedDB database and object store.
+         * @returns {Promise<IDBDatabase>} A promise that resolves with the database instance or rejects on error.
+         */
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                if (db) { // If db is already initialized
+                    resolve(db);
+                    return;
+                }
+
+                console.log(`[DB] Initializing database: ${DB_NAME}`);
+                const request = indexedDB.open(DB_NAME, 1); // Version 1
+
+                request.onerror = (event) => {
+                    console.error('[DB] Error opening database:', event.target.error);
+                    reject('Error opening IndexedDB: ' + event.target.error);
+                };
+
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    console.log(`[DB] Database "${DB_NAME}" opened successfully.`);
+                    resolve(db);
+                };
+
+                request.onupgradeneeded = (event) => {
+                    console.log('[DB] Database upgrade needed or initial setup.');
+                    const tempDb = event.target.result;
+                    if (!tempDb.objectStoreNames.contains(STORE_NAME)) {
+                        console.log(`[DB] Creating object store: ${STORE_NAME}`);
+                        // Using autoIncrementing key for simplicity for now.
+                        // Could also use a keyPath like 'id' if objects have a unique 'id' property.
+                        const objectStore = tempDb.createObjectStore(STORE_NAME, { autoIncrement: true });
+
+                        // Create an index on 'sessionId' to allow fetching all frames for a session.
+                        // And an index on 'sessionId_frameNumber' for sorting / specific frame retrieval if needed.
+                        objectStore.createIndex('sessionId_idx', 'sessionId', { unique: false });
+                        objectStore.createIndex('sessionId_frameNumber_idx', ['sessionId', 'frameNumber'], { unique: true });
+                        console.log('[DB] Object store and indexes created.');
+                    } else {
+                        console.log(`[DB] Object store "${STORE_NAME}" already exists.`);
+                    }
+                };
+            });
+        }
+
+        /**
+         * Deletes ALL frames from the framesStore.
+         * @returns {Promise<void>} A promise that resolves when deletion is complete or rejects on error.
+         */
+        function clearAllFramesFromDB() {
+            return new Promise((resolve, reject) => {
+                if (!db) {
+                    console.warn('[DB] Database not initialized. Cannot clear frames.');
+                    resolve();
+                    return;
+                }
+                console.log(`[DB] Clearing ALL frames from store: ${STORE_NAME}`);
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const objectStore = transaction.objectStore(STORE_NAME);
+                const request = objectStore.clear(); // Clears all data in the object store
+
+                request.onsuccess = () => {
+                    console.log(`[DB] All frames cleared from ${STORE_NAME}.`);
+                    resolve();
+                };
+                request.onerror = (event) => {
+                    console.error('[DB] Error clearing all frames:', event.target.error);
+                    reject('Error clearing all frames from DB: ' + event.target.error);
+                };
+                // Transaction oncomplete/onerror can be added as above if needed for more detail
+            });
+        }
+
+        /**
+         * Adds a frame object to the framesStore in IndexedDB.
+         * @param {object} frameData - The frame object (e.g., { sessionId, frameNumber, frameBlob, originalName }).
+         * @returns {Promise<number>} A promise that resolves with the key of the added item or rejects on error.
+         */
+        function addFrameToDB(frameData) {
+            return new Promise((resolve, reject) => {
+                if (!db) {
+                    console.error('[DB] Database not initialized. Cannot add frame.');
+                    reject('Database not initialized.');
+                    return;
+                }
+                const transaction = db.transaction([STORE_NAME], 'readwrite');
+                const objectStore = transaction.objectStore(STORE_NAME);
+                const request = objectStore.add(frameData);
+
+                request.onsuccess = (event) => {
+                    // console.log('[DB] Frame added successfully with key:', event.target.result);
+                    resolve(event.target.result);
+                };
+                request.onerror = (event) => {
+                    console.error('[DB] Error adding frame:', event.target.error);
+                    reject('Error adding frame to DB: ' + event.target.error);
+                };
+            });
+        }
+
         // --- Service Worker Registration ---
         // This section handles the registration of the service worker.
         // Service workers enable Progressive Web App (PWA) features like offline caching and background updates.
@@ -434,8 +542,21 @@
 
         // --- State Variables ---
         // These variables store the application's state during the video reversal process.
+
+        // Call initDB early on script load, perhaps after DOM elements are defined
+        // or when the application is ready. For now, let's call it to ensure it runs.
+        // We'll handle the promise to ensure DB is ready before operations.
+        initDB().then(() => {
+            console.log('[DB] Database ready for use.');
+        }).catch(error => {
+            console.error('[DB] Critical: Database initialization failed.', error);
+            // Maybe disable app functionality or show error to user
+            statusDisplay.textContent = 'Error: Local database could not be initialized. App may not work correctly.';
+            if(reverseButton) reverseButton.disabled = true;
+        });
+
         let sourceVideoFile = null; // Stores the selected video file object
-        let extractedFrames = []; // Array to store extracted video frames as data URLs
+        // let extractedFrames = []; // Array to store extracted video frames as data URLs - NO LONGER USED FOR FRAME DATA
         const MAX_RESOLUTION = 720; // Target resolution for video processing (720p optimization)
         let currentOriginalVideoObjectURL = null; // Stores the object URL for the original video, used for display
         let currentReversedVideoObjectURL = null; // Stores the object URL for the reversed video, used for display and download
@@ -612,6 +733,22 @@
         // --- Video Reversal Process ---
         // Event listener for the "Reverse Video" button.
         reverseButton.addEventListener('click', async function() {
+            // At the very start of the click listener
+            statusDisplay.textContent = 'Initializing and cleaning up previous session data...';
+            progressBar.style.display = 'block'; // Show progress early
+            progressBar.value = 0;
+
+            try {
+                await clearAllFramesFromDB(); // Clear all frames before starting new session
+                console.log('[PROCESS] Previous frames cleared from DB.');
+            } catch (cleanupError) {
+                console.error('[PROCESS] Failed to clear previous frames from DB:', cleanupError);
+                statusDisplay.textContent = 'Error during cleanup. Please try again.';
+                // Potentially disable button and return
+                updateReverseButtonState();
+                return;
+            }
+
             // Validations before starting the reversal process
             if (!originalVideo.src || originalVideo.readyState < originalVideo.HAVE_METADATA) {
                 statusDisplay.textContent = 'Please load a video first or wait for it to load.';
@@ -633,7 +770,10 @@
             statusDisplay.textContent = 'Step 1: Scaling and preparing canvas...';
             progressBar.style.display = 'block';
             progressBar.value = 0;
-            extractedFrames = []; // Clear any previously extracted frames
+            // extractedFrames = []; // Clear any previously extracted frames - NO LONGER USED
+
+            const currentSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            console.log(`[PROCESS] Starting new session: ${currentSessionId}`);
 
             // Revoke any existing object URL for the reversed video
             if (currentReversedVideoObjectURL) {
@@ -647,41 +787,31 @@
 
             // Main try-catch block for the entire video reversal pipeline
             try {
-                // Step 2: Extract frames from the original video
-                statusDisplay.textContent = 'Step 2: Extracting video frames...';
-                await extractFramesOptimized(); // Call the frame extraction function
-                if (extractedFrames.length === 0) { // Check if any frames were extracted
-                    statusDisplay.textContent = 'No frames were extracted. Cannot reverse video.';
-                    reverseButton.disabled = false; // Re-enable reverse button
-                    progressBar.style.display = 'none';
-                    return;
-                }
-                // Status update after frame extraction
-                statusDisplay.textContent = `Extracted ${extractedFrames.length} frames. Creating reversed video with lossless compression...`;
+                statusDisplay.textContent = 'Step 2: Extracting and saving frames to local store...';
+                const extractionResult = await extractFramesOptimized(currentSessionId);
 
-                // Step 3 & 4 (Combined in createReversedVideoOptimized): Reverse frames and re-encode video
-                statusDisplay.textContent = 'Step 4: Re-encoding reversed video...'; // (Step 3 is implicit frame reversal)
-                await createReversedVideoOptimized(); // Call the video creation function
-            } catch (error) { // Catch any errors during the process
-                console.error("Error during video reversal:", error);
+                statusDisplay.textContent = `Frames saved for session ${currentSessionId}. Creating reversed video...`;
+                await createReversedVideoOptimized(currentSessionId, extractionResult.totalFrames);
+            } catch (error) { // Catch errors from extraction or subsequent steps
+                console.error("Error during video reversal pipeline:", error);
                 statusDisplay.textContent = `Error: ${error.message}. Check console for details.`;
-                progressBar.style.display = 'none'; // Hide progress bar on error
-                reverseButton.disabled = false; // Re-enable reverse button
+                progressBar.style.display = 'none';
+                updateReverseButtonState(); // Re-enable button considering current state
             }
         });
 
         // --- Frame Extraction Logic ---
         /**
-         * Extracts frames from the original video at a specified FPS.
-         * The frames are drawn onto a canvas and stored as data URLs in the `extractedFrames` array.
-         * This function updates the progress bar and status display.
+         * Extracts frames from the original video at a specified FPS and saves them to IndexedDB.
+         * @param {string} currentSessionId - The unique ID for the current processing session.
+         * @returns {Promise<object>} A promise that resolves with { totalFrames: number, sessionId: string } or rejects on critical error.
          */
-        async function extractFramesOptimized() {
+        async function extractFramesOptimized(currentSessionId) {
             const duration = originalVideo.duration; // Get video duration
             const fps = parseInt(document.getElementById("fpsInput").value) || 30; // Get target FPS from input, default to 30
             const interval = 1 / fps; // Time interval between frames
-            const totalFramesToExtract = Math.max(1, Math.floor(duration * fps)); // Calculate total frames needed
-            extractedFrames = []; // Initialize/clear the array for extracted frames
+            const totalFramesToExtract = Math.max(1, Math.floor(duration * fps));
+            // extractedFrames = []; // No longer using global array for frame data
 
             console.log(`Original video duration: ${duration} seconds`);
             console.log(`Target FPS: ${fps}`);
@@ -720,20 +850,38 @@
                 ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(originalVideo, 0, 0, frameCanvas.width, frameCanvas.height); // Draw video frame
 
-                try {
-                    // Convert the canvas content to a PNG image data URL and store it
-                    extractedFrames.push(frameCanvas.toDataURL('image/png'));
-                } catch (e) {
-                    console.error("Canvas toDataURL error:", e);
-                    throw new Error("Failed to get image data from canvas. This might happen with very large resolutions or if the canvas is tainted.");
-                }
+                await new Promise((resolveFrameSave, rejectFrameSave) => {
+                    frameCanvas.toBlob(async (blob) => {
+                        if (blob) {
+                            const frameData = {
+                                sessionId: currentSessionId,
+                                frameNumber: i,
+                                frameBlob: blob,
+                                originalName: sourceVideoFile ? sourceVideoFile.name : 'unknown_video'
+                            };
+                            try {
+                                await addFrameToDB(frameData);
+                                // console.log(`[PROCESS] Frame ${i} for session ${currentSessionId} saved to DB.`);
+                                resolveFrameSave();
+                            } catch (dbError) {
+                                console.error(`[PROCESS] Failed to save frame ${i} to DB.`, dbError);
+                                statusDisplay.textContent = `Error saving frame ${i}. Reversal may fail.`;
+                                rejectFrameSave(dbError);
+                            }
+                        } else {
+                            console.error(`[PROCESS] Failed to create blob for frame ${i}.`);
+                            statusDisplay.textContent = `Error processing frame ${i}.`;
+                            rejectFrameSave(new Error(`Failed to create blob for frame ${i}.`));
+                        }
+                    }, 'image/png');
+                });
 
-                // Update progress (frame extraction is considered the first 50% of the process)
                 const progressPercentage = Math.round(((i + 1) / totalFramesToExtract) * 50);
                 progressBar.value = progressPercentage;
                 statusDisplay.textContent = `Extracting frames at ${fps} FPS (${progressPercentage}%)...`;
             }
-            console.log(`Successfully extracted ${extractedFrames.length} frames.`);
+            // console.log(`Successfully extracted ${extractedFrames.length} frames.`); // No longer relevant in this way
+            return { totalFrames: totalFramesToExtract, sessionId: currentSessionId };
         }
 
         // --- Reversed Video Creation Logic ---
@@ -741,20 +889,23 @@
          * Creates a reversed video from the extracted frames using the MediaRecorder API.
          * This function also handles audio reversal if the original video has an audio track.
          * Updates progress bar and status display.
+         * @param {string} currentSessionId - The ID of the current session to fetch frames for.
+         * @param {number} totalFrames - The total number of frames expected for this session.
          */
-        async function createReversedVideoOptimized() {
+        async function createReversedVideoOptimized(currentSessionId, totalFrames) {
             const fps = parseInt(document.getElementById("fpsInput").value) || 30; // Get target FPS
-            return new Promise(async (resolve, reject) => { // Returns a promise that resolves when video creation is complete or rejects on error
-                if (extractedFrames.length === 0) {
-                    reject(new Error('No frames available to create video.'));
-                    return;
-                }
+            return new Promise(async (resolve, reject) => {
+                // if (extractedFrames.length === 0) { // Old check based on global array
+                //     reject(new Error('No frames available to create video.'));
+                //     return;
+                // }
+                // TODO: Add check if totalFrames is 0 or undefined, or if DB fetch fails later
 
-                // Step 3: Reverse the order of extracted frames
-                statusDisplay.textContent = 'Step 3: Reversing frames...';
-                extractedFrames.reverse(); // Actual reversal of frame order
-                statusDisplay.textContent = 'Creating reversed video with lossless compression (50%)...'; // Status update
-                progressBar.value = 50; // Update progress bar (re-encoding is the second 50%)
+                // Step 3: Frames are already in order in DB (0 to N-1). We'll fetch them in reverse.
+                statusDisplay.textContent = 'Step 3: Preparing to fetch frames for reversal...';
+                // extractedFrames.reverse(); // No longer using global array for frame data
+                statusDisplay.textContent = 'Creating reversed video with lossless compression (50%)...';
+                progressBar.value = 50;
 
                 // Check for MediaRecorder API support
                 if (!('MediaRecorder' in window)) {
