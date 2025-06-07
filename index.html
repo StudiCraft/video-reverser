@@ -306,10 +306,10 @@
 
 
 <label style="margin-top:15px; display:block;">FPS:
-    <input id="fpsInput" type="number" min="1" max="60" value="30"
+    <input id="fpsInput" type="number" min="5" max="60" value="30"
            style="width: 60px; padding: 4px; margin-left: 8px;" />
 </label>
-
+<p id="fpsWarning" style="font-size: 0.8em; color: #d9534f; margin-top: 4px; min-height: 1em;"></p>
 <button id="reverseButton" class="action-button" disabled>🔄 Reverse Video</button>
         <a id="downloadButton" class="action-button" style="display:none;" download="reversed_video.webm" role="button">📥 Download Reversed Video</a>
 
@@ -395,6 +395,43 @@
         const frameCanvas = document.getElementById('frameCanvas'); // Canvas element used for frame extraction and manipulation
         const ctx = frameCanvas.getContext('2d'); // 2D rendering context for the canvas
 
+        const fpsInput = document.getElementById('fpsInput'); // Ensure it's defined if not already
+        const fpsWarning = document.getElementById('fpsWarning');
+
+        if (fpsInput && fpsWarning) { // fpsWarning is already defined globally or in an outer scope
+            fpsInput.addEventListener('input', function() {
+                let fpsValue = parseInt(this.value, 10); // Use let to allow re-assignment
+
+                if (!isNaN(fpsValue)) {
+                    if (fpsValue < 5) {
+                        this.value = 5; // Clamp input field value
+                        fpsValue = 5;   // Update fpsValue for current logic
+                    } else if (fpsValue > 60) {
+                        this.value = 60; // Clamp input field value
+                        fpsValue = 60;   // Update fpsValue for current logic
+                    }
+                } else {
+                    // Handle cases where input is not a valid number, e.g., empty string
+                    // Depending on desired behavior, could set to default, or rely on HTML validation popup
+                    // For now, if it's NaN, subsequent logic for warning/button will likely treat it as invalid.
+                    // Or, we could force a default if it becomes NaN after parsing.
+                    // Let's ensure that if it's NaN, the button gets disabled and warning is cleared.
+                    // The updateReverseButtonState() and warning logic should correctly handle NaN fpsValue.
+                }
+
+                // Update warning (this logic might become mostly moot if clamping is effective)
+                // The warning was for "fpsValue > 0 && fpsValue < 5". Since it's clamped to 5,
+                // this specific warning text will not show. We can remove it or change it.
+                // For now, let's keep the structure but it won't trigger the "less than 5" text.
+                // A new, different warning could be added if desired, e.g., "Value clamped to 5-60 range".
+                // Let's remove the old warning text logic as it's now handled by clamping.
+                fpsWarning.textContent = ''; // Clear any previous general warning.
+                                             // Specific warning for "clamped" could be added here if needed.
+
+                updateReverseButtonState(); // Call this with the (potentially clamped) fpsValue
+            });
+        }
+
         // --- State Variables ---
         // These variables store the application's state during the video reversal process.
         let sourceVideoFile = null; // Stores the selected video file object
@@ -457,10 +494,23 @@
             return `${mins}:${secs.toString().padStart(2, '0')}`; // Format and return
         }
 
+        function updateReverseButtonState() {
+            if (!reverseButton || !fpsInput || !originalVideo) return; // Ensure elements are present
+
+            const fpsValue = parseInt(fpsInput.value, 10);
+            const isVideoReady = sourceVideoFile && originalVideo.readyState >= originalVideo.HAVE_METADATA && originalVideo.videoWidth > 0 && originalVideo.videoHeight > 0;
+
+            if (isVideoReady && !isNaN(fpsValue) && fpsValue >= 5) {
+                reverseButton.disabled = false;
+            } else {
+                reverseButton.disabled = true;
+            }
+        }
+
         // --- File Upload and Initial Video Setup ---
         // This event listener handles the selection of a video file by the user.
         videoUpload.addEventListener('change', function(event) {
-            sourceVideoFile = event.target.files[0]; // Get the selected file
+            sourceVideoFile = event.target.files[0];
             if (sourceVideoFile) {
                 processingStartTime = performance.now(); // Record start time for performance metrics
 
@@ -492,7 +542,8 @@
                     frameCanvas.width = optimalDims.width;
                     frameCanvas.height = optimalDims.height;
 
-                    reverseButton.disabled = false; // Enable the reverse button
+                    // reverseButton.disabled = false; // Enable the reverse button
+                    updateReverseButtonState();
                     statusDisplay.textContent = 'Video loaded. Ready to reverse.';
 
                     // Display video information (file size, duration, resolution)
@@ -525,14 +576,36 @@
                 // Error handling for video loading issues
                 originalVideo.onerror = () => {
                     statusDisplay.textContent = 'Error loading video. The file might be corrupt or an unsupported format.';
-                    reverseButton.disabled = true;
+                    // reverseButton.disabled = true; // Old line
                     // Revoke the object URL if there's an error to prevent memory leaks
                     if (currentOriginalVideoObjectURL) {
                         URL.revokeObjectURL(currentOriginalVideoObjectURL);
                         currentOriginalVideoObjectURL = null;
                     }
+                    updateReverseButtonState(); // Ensure button is disabled
                 };
                 statusDisplay.textContent = 'Loading video...'; // Initial status message
+            } else {
+                // No file selected or selection cleared
+                if (currentOriginalVideoObjectURL) {
+                    URL.revokeObjectURL(currentOriginalVideoObjectURL);
+                    currentOriginalVideoObjectURL = null;
+                }
+                originalVideo.src = '';
+                sourceVideoFile = null; // Explicitly set sourceVideoFile to null
+                statusDisplay.textContent = 'No video selected.';
+                performanceInfo.style.display = 'none';
+                downloadButton.style.display = 'none';
+                if (reversedVideo.src && reversedVideo.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(reversedVideo.src);
+                }
+                reversedVideo.src = '';
+                progressBar.style.display = 'none';
+                progressBar.value = 0;
+                const fpsWarning = document.getElementById('fpsWarning');
+                if (fpsWarning) fpsWarning.textContent = '';
+
+                updateReverseButtonState(); // Ensure button is disabled
             }
         });
 
@@ -737,6 +810,23 @@
                     // universal guarantee against playback issues. The green screen issue, in particular,
                     // often points to problems in the video track decoding, possibly related to
                     // keyframes or codec profile compatibility.
+
+                    // NOTE ON LOW FPS AND KEYFRAME ISSUES WITH EXTERNAL PLAYERS:
+                    // The MediaRecorder API does not provide direct control over keyframe intervals
+                    // (GOP size) for video encoding. When using very low FPS values (e.g., 1-2 FPS),
+                    // the resulting H.264 stream (even if technically valid) may have very infrequent
+                    // keyframes.
+                    // Some external media players (like VLC) might struggle with such streams,
+                    // exhibiting behaviors like:
+                    //   - Displaying only a still image (typically the first frame).
+                    //   - Freezing until a new keyframe is encountered much later in the video.
+                    //   - Misinterpreting the low frame rate as a lack of data.
+                    // This can happen even if the browser's internal <video> player can play the
+                    // generated Blob/Object URL correctly (as the browser has more context on the
+                    // stream it just created).
+                    // The UI provides a warning for users selecting these low FPS values.
+                    // This is largely a limitation of current browser MediaRecorder implementations
+                    // for fine-grained encoding control at such edge-case frame rates.
                     const mimeTypes = [
                         // Prioritize avc3 (H.264 Annex B) as suggested by browser warnings
                         'video/mp4; codecs="avc3.42E01E, mp4a.40.2"', // H.264 Baseline Profile Level 3.0 + AAC-LC
