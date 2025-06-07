@@ -300,6 +300,7 @@
             <div class="video-wrapper">
                 <h2>Reversed Video</h2>
                 <video id="reversedVideo" controls playsinline aria-label="Reversed video player"></video>
+                <p style="text-align: right; margin-top: 4px; font-size: 0.9em;">Duration: <span id="reversedVideoDurationDisplay">--:--</span></p>
             </div>
         </div>
 
@@ -371,6 +372,21 @@
         const videoUpload = document.getElementById('videoUpload'); // Input element for video file selection
         const originalVideo = document.getElementById('originalVideo'); // Video player for the original video
         const reversedVideo = document.getElementById('reversedVideo'); // Video player for the reversed video
+        reversedVideo.addEventListener('loadedmetadata', () => {
+            console.log('Reversed video (onloadedmetadata) reported duration:', reversedVideo.duration);
+            const durationDisplay = document.getElementById('reversedVideoDurationDisplay');
+            if (durationDisplay) {
+                if (reversedVideo.duration && reversedVideo.duration !== Infinity && !isNaN(reversedVideo.duration) && reversedVideo.duration > 0) {
+                    durationDisplay.textContent = formatTime(reversedVideo.duration);
+                } else if (originalVideo.duration && originalVideo.duration !== Infinity && !isNaN(originalVideo.duration)) {
+                    // If reversedVideo.duration is invalid, use originalVideo.duration as a fallback
+                    console.log('Reversed video duration is invalid, using original video duration as fallback for display.');
+                    durationDisplay.textContent = formatTime(originalVideo.duration) + ' (actual)';
+                } else {
+                    durationDisplay.textContent = '--:--'; // Fallback if no valid duration is found
+                }
+            }
+        });
         const reverseButton = document.getElementById('reverseButton'); // Button to start the video reversal process
         const downloadButton = document.getElementById('downloadButton'); // Button to download the reversed video
         const statusDisplay = document.getElementById('status'); // Element to display status messages
@@ -666,7 +682,23 @@
                 }
 
                 try {
-                    // Create a MediaStream from the canvas. This stream will provide frames to the MediaRecorder.
+                    // NOTE ON VIDEO DURATION METADATA:
+                    // MediaRecorder, especially when sourcing from a canvas stream and muxing audio,
+                    // often does not write accurate duration metadata into the resulting video file's header.
+                    // This can cause media players and file explorers to display the duration as 00:00
+                    // or an incorrect value, even if the video plays correctly for the full length.
+                    //
+                    // The actual stream recorded *does* have the correct length, determined by the number
+                    // of frames drawn and the FPS. The issue is purely with the metadata in the container
+                    // (e.g., WebM, MP4).
+                    //
+                    // Robustly fixing this usually requires remuxing the generated video file with tools
+                    // like ffmpeg to rebuild the container and insert correct metadata headers. This is
+                    // a complex operation not easily done client-side without large libraries (e.g., ffmpeg.wasm).
+                    //
+                    // The current implementation attempts to mitigate this for the in-app player by
+                    // displaying the original video's duration if the generated one is incorrect,
+                    // but the downloaded file may still exhibit the duration issue in external players.
                     const stream = frameCanvas.captureStream(fps);
                     if (!stream) {
                         reject(new Error("Failed to capture stream from canvas."));
@@ -731,8 +763,14 @@
                                 source.buffer = reversedAudioBuffer;
                                 // Create a MediaStreamDestinationNode to capture the audio output as a stream
                                 const dest = audioContext.createMediaStreamDestination();
+
+                                console.log('Original video duration:', originalVideo.duration);
+                                console.log('Decoded audioBuffer duration:', audioBuffer.duration);
+                                console.log('Reversed audioBuffer duration:', reversedAudioBuffer.duration);
+
                                 source.connect(dest); // Connect the source to the destination
                                 source.start(); // Start playing the reversed audio (into the destination stream)
+                                console.log('Reversed audio MediaStreamTrack settings:', dest.stream.getAudioTracks()[0].getSettings());
 
                                 // Combine the video stream (from canvas) and the reversed audio stream
                                 mixedStream = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
