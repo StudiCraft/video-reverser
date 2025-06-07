@@ -761,15 +761,21 @@
 
                     let selectedMimeType = '';
                     for (const mimeType of mimeTypes) {
-                        if (MediaRecorder.isTypeSupported(mimeType)) {
-                            console.log(`Supported MIME type found: ${mimeType}`); // Add log for supported type
+                        const isSupported = MediaRecorder.isTypeSupported(mimeType);
+                        // Log with [INFO] prefix
+                        console.log(`[INFO] Testing MIME type: ${mimeType} - Supported: ${isSupported}`);
+                        // Log with [WARN-DEBUG] prefix for higher visibility (temporary)
+                        console.warn(`[WARN-DEBUG] Testing MIME type: ${mimeType} - Supported: ${isSupported}`);
+                        if (isSupported) {
                             selectedMimeType = mimeType;
+                            // Optional: Log that this one was chosen before breaking
+                            console.log(`[INFO] Using first supported MIME type: ${selectedMimeType}`);
+                            console.warn(`[WARN-DEBUG] Using first supported MIME type: ${selectedMimeType}`);
                             break;
-                        } else {
-                            console.log(`MIME type not supported: ${mimeType}`); // Add log for unsupported type
                         }
                     }
-                    console.log('Selected MIME type for MediaRecorder options:', selectedMimeType || 'default (browser will choose)');
+                    console.log('[INFO] Selected MIME type for MediaRecorder options:', selectedMimeType || 'default (browser will choose)');
+                    console.warn('[WARN-DEBUG] Selected MIME type for MediaRecorder options:', selectedMimeType || 'default (browser will choose)');
 
                     // Configure MediaRecorder options, including MIME type and video bitrate for quality.
                     const recordingOptions = selectedMimeType ? {
@@ -823,23 +829,21 @@
 
                                 // Combine the video stream (from canvas) and the reversed audio stream
                                 mixedStream = new MediaStream([...stream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-                                mediaRecorder = new MediaRecorder(mixedStream, recordingOptions); // Initialize MediaRecorder with combined stream
-
-                                const formatDisplayAudioTry = document.getElementById('recordingFormatDisplay');
-                                if (formatDisplayAudioTry) {
-                                    let friendlyFormat = "Unknown";
-                                    if (mediaRecorder.mimeType) {
-                                        if (mediaRecorder.mimeType.includes('mp4')) {
-                                            friendlyFormat = "MP4";
-                                        } else if (mediaRecorder.mimeType.includes('webm')) {
-                                            friendlyFormat = "WebM";
-                                        } else {
-                                            friendlyFormat = mediaRecorder.mimeType;
-                                        }
-                                    }
-                                    formatDisplayAudioTry.textContent = `Recording format: ${friendlyFormat}`;
-                                } else {
-                                    console.log('Recording format (from mediaRecorder.mimeType):', mediaRecorder.mimeType);
+                                try {
+                                    mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
+                                } catch (instantiationError) {
+                                    console.error('[ERROR] Failed to instantiate MediaRecorder (with audio):', instantiationError);
+                                    // Propagate or handle error: we might need to reject the main promise here
+                                    // For now, mediaRecorder will remain undefined, and subsequent checks should handle it or fail.
+                                    // The outer try-catch of createReversedVideoOptimized might catch this if not handled locally.
+                                }
+                                if (!mediaRecorder) {
+                                    console.error('[CRITICAL] MediaRecorder object is not available after all instantiation attempts. Aborting video creation.');
+                                    statusDisplay.textContent = 'Error: Failed to initialize video recorder. Cannot proceed.';
+                                    progressBar.style.display = 'none';
+                                    reverseButton.disabled = false;
+                                    reject(new Error('MediaRecorder could not be instantiated. Video processing aborted.'));
+                                    return;
                                 }
                                 startRecordingAndDrawing(mediaRecorder, resolve, reject, fps); // Proceed to record video frames
 
@@ -847,24 +851,19 @@
                                 console.error("Audio processing error:", audioError);
                                 // Fallback: If audio processing fails, proceed with video-only reversal.
                                 mixedStream = stream; // Use only the video stream from the canvas
-                                mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
+                                try {
+                                    mediaRecorder = new MediaRecorder(mixedStream, recordingOptions); // mixedStream here is just video
+                                } catch (instantiationError) {
+                                    console.error('[ERROR] Failed to instantiate MediaRecorder (audio processing fallback):', instantiationError);
+                                }
                                 statusDisplay.textContent = `Warning: Audio processing failed (${audioError.message}). Reversing video only.`;
-
-                                const formatDisplayAudioCatch = document.getElementById('recordingFormatDisplay');
-                                if (formatDisplayAudioCatch) {
-                                    let friendlyFormat = "Unknown";
-                                    if (mediaRecorder.mimeType) {
-                                        if (mediaRecorder.mimeType.includes('mp4')) {
-                                            friendlyFormat = "MP4";
-                                        } else if (mediaRecorder.mimeType.includes('webm')) {
-                                            friendlyFormat = "WebM";
-                                        } else {
-                                            friendlyFormat = mediaRecorder.mimeType;
-                                        }
-                                    }
-                                    formatDisplayAudioCatch.textContent = `Recording format: ${friendlyFormat}`;
-                                } else {
-                                    console.log('Recording format (from mediaRecorder.mimeType):', mediaRecorder.mimeType);
+                                if (!mediaRecorder) {
+                                    console.error('[CRITICAL] MediaRecorder object is not available after all instantiation attempts. Aborting video creation.');
+                                    statusDisplay.textContent = 'Error: Failed to initialize video recorder. Cannot proceed.';
+                                    progressBar.style.display = 'none';
+                                    reverseButton.disabled = false;
+                                    reject(new Error('MediaRecorder could not be instantiated. Video processing aborted.'));
+                                    return;
                                 }
                                 startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                             }
@@ -874,24 +873,19 @@
                             console.error("Audio file reading error:", e);
                             // Fallback: If reading the audio file fails, proceed with video-only reversal.
                             mixedStream = stream;
-                            mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
+                            try {
+                                mediaRecorder = new MediaRecorder(mixedStream, recordingOptions); // mixedStream here is just video
+                            } catch (instantiationError) {
+                                console.error('[ERROR] Failed to instantiate MediaRecorder (audio file read error fallback):', instantiationError);
+                            }
                             statusDisplay.textContent = `Warning: Could not read audio file (${e.message}). Reversing video only.`;
-
-                            const formatDisplayAudioError = document.getElementById('recordingFormatDisplay');
-                            if (formatDisplayAudioError) {
-                                let friendlyFormat = "Unknown";
-                                if (mediaRecorder.mimeType) {
-                                    if (mediaRecorder.mimeType.includes('mp4')) {
-                                        friendlyFormat = "MP4";
-                                    } else if (mediaRecorder.mimeType.includes('webm')) {
-                                        friendlyFormat = "WebM";
-                                    } else {
-                                        friendlyFormat = mediaRecorder.mimeType;
-                                    }
-                                }
-                                formatDisplayAudioError.textContent = `Recording format: ${friendlyFormat}`;
-                            } else {
-                                console.log('Recording format (from mediaRecorder.mimeType):', mediaRecorder.mimeType);
+                            if (!mediaRecorder) {
+                                console.error('[CRITICAL] MediaRecorder object is not available after all instantiation attempts. Aborting video creation.');
+                                statusDisplay.textContent = 'Error: Failed to initialize video recorder. Cannot proceed.';
+                                progressBar.style.display = 'none';
+                                reverseButton.disabled = false;
+                                reject(new Error('MediaRecorder could not be instantiated. Video processing aborted.'));
+                                return;
                             }
                             startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                         };
@@ -900,27 +894,21 @@
                     } else {
                         // If no sourceVideoFile (e.g., if it was cleared or not loaded), proceed with video-only reversal.
                         mixedStream = stream;
-                        mediaRecorder = new MediaRecorder(mixedStream, recordingOptions);
-                    }
-
-                    const formatDisplay = document.getElementById('recordingFormatDisplay');
-                    if (formatDisplay) {
-                        let friendlyFormat = "Unknown";
-                        if (mediaRecorder.mimeType) {
-                            if (mediaRecorder.mimeType.includes('mp4')) {
-                                friendlyFormat = "MP4";
-                            } else if (mediaRecorder.mimeType.includes('webm')) {
-                                friendlyFormat = "WebM";
-                            } else {
-                                friendlyFormat = mediaRecorder.mimeType; // Show full type if not common
-                            }
+                        try {
+                            mediaRecorder = new MediaRecorder(mixedStream, recordingOptions); // mixedStream here is just video
+                        } catch (instantiationError) {
+                            console.error('[ERROR] Failed to instantiate MediaRecorder (video-only path):', instantiationError);
                         }
-                        formatDisplay.textContent = `Recording format: ${friendlyFormat}`;
-                    } else {
-                        // Fallback if element not found, though it should be
-                        console.log('Recording format (from mediaRecorder.mimeType):', mediaRecorder.mimeType);
+                        if (!mediaRecorder) {
+                            console.error('[CRITICAL] MediaRecorder object is not available after all instantiation attempts. Aborting video creation.');
+                            statusDisplay.textContent = 'Error: Failed to initialize video recorder. Cannot proceed.';
+                            progressBar.style.display = 'none';
+                            reverseButton.disabled = false;
+                            reject(new Error('MediaRecorder could not be instantiated. Video processing aborted.'));
+                            return;
+                        }
+                        startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
                     }
-                    startRecordingAndDrawing(mediaRecorder, resolve, reject, fps);
 
                 } catch (e) { // Catch errors during MediaRecorder setup or stream capture
                     console.error("MediaRecorder setup or operation failed:", e);
@@ -939,7 +927,27 @@
          * @param {number} fps - The frames per second for recording.
          */
         function startRecordingAndDrawing(mediaRecorder, resolve, reject, fps) {
-            console.log('MediaRecorder instance actually using MIME type:', mediaRecorder.mimeType); // Add this line
+            console.log('[INFO] MediaRecorder instance actually using MIME type:', mediaRecorder.mimeType);
+            console.warn('[WARN-DEBUG] MediaRecorder instance actually using MIME type:', mediaRecorder.mimeType);
+
+            const formatDisplay = document.getElementById('recordingFormatDisplay');
+            if (formatDisplay) {
+                let friendlyFormat = "Unknown";
+                // Ensure mediaRecorder and mediaRecorder.mimeType exist before accessing
+                if (mediaRecorder && mediaRecorder.mimeType) {
+                    if (mediaRecorder.mimeType.includes('mp4')) {
+                        friendlyFormat = "MP4";
+                    } else if (mediaRecorder.mimeType.includes('webm')) {
+                        friendlyFormat = "WebM";
+                    } else {
+                        friendlyFormat = mediaRecorder.mimeType; // Show full type if not common
+                    }
+                    formatDisplay.textContent = `Recording format: ${friendlyFormat}`;
+                } else {
+                    formatDisplay.textContent = 'Recording format: Error determining type';
+                    console.error('[ERROR] Could not determine recording format because mediaRecorder or mimeType is invalid.');
+                }
+            }
             const chunks = []; // Array to store recorded video data chunks
             let frameIndex = 0; // Index for iterating through `extractedFrames` (which are now reversed)
             const frameDisplayInterval = 1000 / fps; // Interval in milliseconds to display each frame
